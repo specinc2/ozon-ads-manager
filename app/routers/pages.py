@@ -404,6 +404,9 @@ async def save_seller_keys(request: Request, db: AsyncSession = Depends(get_db))
     else:
         flash(request, "Сначала добавьте ключи Performance API", "danger")
     return RedirectResponse("/settings", status_code=302)
+
+
+@router.post("/settings/keys")
 async def add_api_key(request: Request, db: AsyncSession = Depends(get_db)):
     ctx = await _common_context(request, db)
     user = ctx["user"]
