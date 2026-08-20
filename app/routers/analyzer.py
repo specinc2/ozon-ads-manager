@@ -119,15 +119,22 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         return {"ok": False, "error": "Укажите название товара или загрузите фото"}
 
     # 2. Поиск цен по маркетплейсам (текстовый запрос по названию)
-    # Прокси из настроек пользователя (если указан)
+    # Прокси и куки Ozon из настроек пользователя
+    import json as json_lib
     from app.models import ProxySetting
     proxy_result = await db.execute(
         select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
     )
     proxy_setting = proxy_result.scalar_one_or_none()
     proxy_url = proxy_setting.proxy_url if proxy_setting and proxy_setting.proxy_url else ""
+    ozon_cookies: dict = {}
+    if proxy_setting and proxy_setting.ozon_cookies:
+        try:
+            ozon_cookies = json_lib.loads(proxy_setting.ozon_cookies)
+        except (json_lib.JSONDecodeError, TypeError):
+            ozon_cookies = {}
 
-    searcher = MarketSearch(proxy_override=proxy_url)
+    searcher = MarketSearch(proxy_override=proxy_url, cookies=ozon_cookies)
     try:
         query = product_name or "товар"
         results = await searcher.search_all(query, limit=15)

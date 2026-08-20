@@ -56,6 +56,9 @@ async def _migrate_sqlite(conn) -> None:
             "seller_client_id_enc": "TEXT DEFAULT ''",
             "seller_api_key_enc": "TEXT DEFAULT ''",
         },
+        "proxy_settings": {
+            "ozon_cookies": "TEXT DEFAULT ''",
+        },
     }
     for table, columns in additions.items():
         result = await conn.execute(text(f"PRAGMA table_info({table})"))

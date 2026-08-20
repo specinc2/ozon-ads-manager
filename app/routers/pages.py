@@ -473,6 +473,7 @@ async def save_proxy(request: Request, db: AsyncSession = Depends(get_db)):
         db.add(setting)
 
     setting.proxy_url = proxy_url
+    setting.ozon_cookies = (form.get("ozon_cookies") or "").strip()
     setting.expires_at = expires_at
     setting.updated_at = datetime.utcnow()
     await db.commit()

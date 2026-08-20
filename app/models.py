@@ -189,7 +189,9 @@ class ProductInfo(Base):
 class ProxySetting(Base):
     """Прокси для анализатора цен (обход антибота Ozon/AliExpress).
 
-    Хранит URL прокси и дату окончания — чтобы видеть, сколько дней осталось.
+    Хранит URL прокси, дату окончания и куки Ozon из браузера пользователя.
+    Куки позволяют пройти JS-challenge Ozon: браузер пользователя его решает,
+    а куки применяются на сервере с прокси.
     """
 
     __tablename__ = "proxy_settings"
@@ -197,6 +199,7 @@ class ProxySetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     proxy_url: Mapped[str] = mapped_column(Text, default="")   # http://user:pass@ip:port
+    ozon_cookies: Mapped[str] = mapped_column(Text, default="")  # JSON-строка с куками Ozon
     expires_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

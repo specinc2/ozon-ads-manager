@@ -97,6 +97,17 @@
                         <input type="date" class="form-control" name="expires_at"
                                value="{{ proxy_setting.expires_at.isoformat() if proxy_setting and proxy_setting.expires_at else '' }}">
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Куки Ozon (для обхода антибота)</label>
+                        <textarea class="form-control" name="ozon_cookies" rows="3"
+                                  placeholder='{"__Secure-access-token": "...", "x-o3-abt-experiments": "..."}'>{{ proxy_setting.ozon_cookies if proxy_setting and proxy_setting.ozon_cookies else '' }}</textarea>
+                        <div class="form-text">
+                            Как получить: откройте <code>https://www.ozon.ru</code> в браузере (где Ozon работает),
+                            нажмите F12 → вкладка «Приложение/Application» → «Cookies» → выберите
+                            <code>https://www.ozon.ru</code> → скопируйте значения
+                            <code>__Secure-access-token</code> и <code>x-o3-abt-experiments</code> и вставьте как JSON выше.
+                        </div>
+                    </div>
                     {% if proxy_setting and proxy_setting.proxy_url %}
                     <div class="alert {% if proxy_setting.days_left is not none and proxy_setting.days_left < 7 %}alert-warning{% else %}alert-success{% endif %} py-2 small">
                         {% if proxy_setting.days_left is not none %}

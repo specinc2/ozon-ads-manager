@@ -65,9 +65,11 @@ class MockResponse:
 class MarketSearch:
     """Ищет цены по запросу на нескольких маркетплейсах."""
 
-    def __init__(self, proxy_override: str = ""):
-        """proxy_override — прокси из настроек пользователя (БД), приоритетнее PROXY_URL из env."""
+    def __init__(self, proxy_override: str = "", cookies: dict | None = None):
+        """proxy_override — прокси из настроек пользователя (БД), приоритетнее PROXY_URL из env.
+        cookies — куки Ozon из браузера пользователя (для обхода антибота)."""
         effective_proxy = proxy_override or PROXY_URL or None
+        self._cookies = cookies or {}
         self._client = httpx.AsyncClient(
             timeout=12.0,
             headers={"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"},
@@ -105,13 +107,16 @@ class MarketSearch:
 
     async def _fetch_with_antibot(self, url: str, **kwargs) -> httpx.Response | None:
         """Запрашивает URL, пытаясь обойти антибот:
-        1. Прямой запрос
-        2. Через прокси (если PROXY_URL задан)
-        3. Через ScrapingAnt (если SCRAPINGANT_API_KEY задан, для Ozon/Ali)
+        1. Прямой запрос (с куками Ozon, если заданы)
+        2. Через прокси (если задан)
+        3. Через ScraperAPI / ZenRows / Crawlbase / ScrapingAnt
         """
         if not kwargs.get("headers"):
             kwargs["headers"] = {"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"}
-        # 1. Прямой
+        # Куки Ozon из браузера пользователя — позволяют пройти JS-challenge
+        if self._cookies:
+            kwargs["cookies"] = self._cookies
+        # 1. Прямой (основной клиент уже с прокси из БД/env)
         try:
             resp = await self._client.get(url, **kwargs)
             if resp.status_code == 200 and not self._is_blocked(resp):
@@ -119,10 +124,11 @@ class MarketSearch:
         except httpx.HTTPError:
             pass
 
-        # 2. Через прокси (если задан)
-        if PROXY_URL:
+        # 2. Через прокси из env (если основной клиент без прокси)
+        if PROXY_URL and not self._client._transport:
             try:
-                async with httpx.AsyncClient(proxy=PROXY_URL, timeout=25.0, headers=kwargs.get("headers", {}), follow_redirects=True) as proxy_client:
+                async with httpx.AsyncClient(proxy=PROXY_URL, timeout=25.0, headers=kwargs.get("headers", {}),
+                                             cookies=self._cookies or None, follow_redirects=True) as proxy_client:
                     resp = await proxy_client.get(url)
                     if resp.status_code == 200 and not self._is_blocked(resp):
                         return resp
