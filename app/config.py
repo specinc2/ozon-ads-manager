@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     debug: bool = True
     database_url: str = "sqlite+aiosqlite:///./data/ozon_ads.db"
     max_campaigns: int = 100
-    scheduler_interval_minutes: int = 5
+    scheduler_interval_minutes: int = 8
     host: str = "127.0.0.1"
     port: int = 8000
 

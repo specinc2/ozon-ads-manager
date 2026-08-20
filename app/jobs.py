@@ -36,7 +36,7 @@ def start_scheduler() -> None:
     if _scheduler and _scheduler.running:
         return
     _scheduler = AsyncIOScheduler()
-    interval = max(settings.scheduler_interval_minutes, 5)  # лимиты API: не чаще 5 минут
+    interval = max(settings.scheduler_interval_minutes, 8)  # лимиты API: не чаще 8 минут
     _scheduler.add_job(
         run_periodic_jobs,
         IntervalTrigger(minutes=interval),
