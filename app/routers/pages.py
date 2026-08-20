@@ -332,6 +332,7 @@ async def stats_page(
     ]
     ctx["campaigns"] = await get_campaigns(db, user.id)
     ctx["selected_campaign"] = campaign_pk_int
+    ctx["days"] = days
     return templates.TemplateResponse("stats.html", ctx)
 
 
