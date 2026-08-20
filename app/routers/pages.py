@@ -333,6 +333,10 @@ async def stats_page(
     ctx["campaigns"] = await get_campaigns(db, user.id)
     ctx["selected_campaign"] = campaign_pk_int
     ctx["days"] = days
+    # Название выбранной кампании для подписи
+    if campaign_pk_int:
+        camp = next((c for c in ctx["campaigns"] if c.id == campaign_pk_int), None)
+        ctx["selected_campaign_title"] = camp.title if camp else str(campaign_pk_int)
     return templates.TemplateResponse("stats.html", ctx)
 
 
