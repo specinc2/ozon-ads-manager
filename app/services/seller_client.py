@@ -181,6 +181,29 @@ class SellerClient:
                 }
         return result
 
+    async def get_product_names(self, offer_ids: list[str]) -> dict[str, str]:
+        """POST /v1/product/info/description — названия товаров по offer_id.
+
+        Возвращает {offer_id: name}.
+        """
+        result: dict[str, str] = {}
+        BATCH = 50
+        for i in range(0, len(offer_ids), BATCH):
+            batch = offer_ids[i:i + BATCH]
+            for offer_id in batch:
+                try:
+                    data = await self._request(
+                        "POST", "/v1/product/info/description",
+                        {"offer_id": offer_id},
+                    )
+                    info = data.get("result") or {}
+                    name = info.get("name") or ""
+                    if name:
+                        result[offer_id] = name
+                except SellerAPIError as e:
+                    logger.warning("Название товара %s не получено: %s", offer_id, e)
+        return result
+
     # ------------------------------------------------------------------
     # Аналитика: выкупы, продажи, заказы за месяц
     # ------------------------------------------------------------------

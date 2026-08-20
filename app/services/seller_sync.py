@@ -79,6 +79,13 @@ async def sync_seller_data(db: AsyncSession, user_id: int, client: SellerClient)
     stocks = await client.get_stocks(offer_ids)
     prices = await client.get_prices(offer_ids)
 
+    # Названия товаров (v3/product/list их не отдаёт — берём из description)
+    try:
+        names = await client.get_product_names(offer_ids)
+    except SellerAPIError as e:
+        logger.warning("Названия товаров не получены: %s", e)
+        names = {}
+
     # Аналитика за месяц (заказы, выручка) — метрика delivered_units устарела,
     # % выкупа пользователь может указать вручную в карточке товара
     today = date.today()
@@ -111,11 +118,16 @@ async def sync_seller_data(db: AsyncSession, user_id: int, client: SellerClient)
 
         info = info_map.get(sku)
         if info is None:
-            info = ProductInfo(user_id=user_id, sku=sku, name=ad_names.get(sku, ""))
+            info = ProductInfo(user_id=user_id, sku=sku, name="")
             db.add(info)
             info_map[sku] = info
         elif not info.name and ad_names.get(sku):
             info.name = ad_names[sku]
+
+        # Если нет названия — берём из Seller API
+        if not info.name:
+            offer = sku_to_offer.get(str(sku)) or str(sku)
+            info.name = names.get(offer) or info.name or ""
 
         # Остатки
         if stock:
