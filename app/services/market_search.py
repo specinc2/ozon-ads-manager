@@ -23,8 +23,11 @@ PROXY_URL = os.getenv("PROXY_URL", "")
 # Бесплатный сервис ScrapingAnt (до 10 000 запросов/мес): https://scrapingant.com
 SCRAPINGANT_API_KEY = os.getenv("SCRAPINGANT_API_KEY", "")
 # ScraperAPI — 1000 запросов/мес бесплатно, без карты: https://scraperapi.com
-# Один из лучших для обхода Akamai (Ozon). Ключ в .env → Ozon/Ali ищутся через него.
 SCRAPERAPI_API_KEY = os.getenv("SCRAPERAPI_API_KEY", "")
+# ZenRows — 1000 кредитов бесплатно, без карты: https://zenrows.com
+# Crawlbase — 1000 запросов бесплатно: https://crawlbase.com
+ZENROWS_API_KEY = os.getenv("ZENROWS_API_KEY", "")
+CRAWLBASE_TOKEN = os.getenv("CRAWLBASE_TOKEN", "")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
@@ -132,10 +135,40 @@ class MarketSearch:
                 async with httpx.AsyncClient(timeout=60.0) as sa_client:
                     resp = await sa_client.get(sa_url)
                     if resp.status_code == 200:
-                        # ScraperAPI отдаёт контент страницы напрямую (text/html)
                         return MockResponse(status_code=200, text=resp.text)
             except Exception as e:
                 logger.warning("ScraperAPI: %s", e)
+
+        # 3b. Через ZenRows (1000 кредитов бесплатно, без карты)
+        if ZENROWS_API_KEY:
+            try:
+                zr_url = "https://api.zenrows.com/v1/?" + urllib.parse.urlencode({
+                    "apikey": ZENROWS_API_KEY, "url": url,
+                    "js_render": "true", "premium_proxy": "true", "proxy_country": "ru",
+                })
+                async with httpx.AsyncClient(timeout=60.0) as zr_client:
+                    resp = await zr_client.get(zr_url)
+                    if resp.status_code == 200 and resp.text:
+                        return MockResponse(status_code=200, text=resp.text)
+            except Exception as e:
+                logger.warning("ZenRows: %s", e)
+
+        # 3c. Через Crawlbase (1000 запросов бесплатно)
+        if CRAWLBASE_TOKEN:
+            try:
+                cb_url = "https://api.crawlbase.com/?" + urllib.parse.urlencode({
+                    "token": CRAWLBASE_TOKEN, "url": url,
+                    "render": "true", "country": "ru",
+                })
+                async with httpx.AsyncClient(timeout=60.0) as cb_client:
+                    resp = await cb_client.get(cb_url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        body = data.get("body") or data.get("contents") or ""
+                        if body:
+                            return MockResponse(status_code=200, text=body)
+            except Exception as e:
+                logger.warning("Crawlbase: %s", e)
 
         # 4. Через ScrapingAnt (бесплатный, 10k запросов/мес)
         if SCRAPINGANT_API_KEY:
@@ -204,7 +237,7 @@ class MarketSearch:
         resp = await self._fetch_with_antibot(url, headers={"Accept": "application/json"})
         if resp is None:
             return SearchResult(marketplace="ozon", ok=False,
-                                error="Ozon закрыт антиботом. Добавьте ключ ScraperAPI в .env (SCRAPERAPI_API_KEY)")
+                                error="Ozon закрыт антиботом. Добавьте ключ бесплатного скрейпера в .env: SCRAPERAPI_API_KEY / ZENROWS_API_KEY / CRAWLBASE_TOKEN")
         if resp.status_code in (307, 403, 404) or "block" in resp.text.lower()[:200]:
             return SearchResult(marketplace="ozon", ok=False, error="Ozon закрыт антиботом (307/403)")
         resp.raise_for_status()
