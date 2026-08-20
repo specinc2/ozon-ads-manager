@@ -22,7 +22,34 @@ async def analyzer_page(request: Request, db: AsyncSession = Depends(get_db)):
     user = await get_current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=302)
-    return templates.TemplateResponse("analyzer.html", {"request": request, "user": user, "flashes": []})
+
+    # Подставляем средние значения из Seller API (реальные комиссии/логистика продавца)
+    defaults = await get_seller_defaults(db, user.id)
+    return templates.TemplateResponse("analyzer.html", {
+        "request": request, "user": user, "flashes": [],
+        "defaults": defaults,
+    })
+
+
+async def get_seller_defaults(db: AsyncSession, user_id: int) -> dict:
+    """Средние комиссия/логистика/эквайринг/выкуп по товарам пользователя (из Seller API)."""
+    from sqlalchemy import func, select
+    from app.models import ProductInfo
+    result = await db.execute(
+        select(
+            func.avg(ProductInfo.commission_pct),
+            func.avg(ProductInfo.logistics_cost),
+            func.avg(ProductInfo.acquiring_pct),
+            func.avg(ProductInfo.buyout_pct),
+        ).where(ProductInfo.user_id == user_id, ProductInfo.commission_pct > 0)
+    )
+    row = result.one()
+    return {
+        "commission_pct": round(row[0], 1) if row[0] else 20.0,
+        "logistics_cost": round(row[1], 2) if row[1] else 50.0,
+        "acquiring_pct": round(row[2], 2) if row[2] else 1.5,
+        "buyout_pct": round(row[3], 1) if row[3] else 100.0,
+    }
 
 
 @router.post("/analyzer/api")
@@ -111,12 +138,23 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         for r in results
     }
 
+    # Ссылки «открыть поиск» на маркетплейсах (для ручного просмотра)
+    from urllib.parse import quote
+    q = quote(query)
+    market_search_urls = {
+        "wb": f"https://www.wildberries.ru/catalog/0/search.aspx?search={q}",
+        "ozon": f"https://www.ozon.ru/search/?text={q}",
+        "ym": f"https://market.yandex.ru/search?text={q}",
+        "aliexpress": f"https://www.aliexpress.com/w/wholesale-{q}.html",
+    }
+
     return {
         "ok": True,
         "product_name": product_name,
         "photo_url": photo_url,
         "photo_links": photo_links,
         "photo_search_urls": photo_search_urls,
+        "market_search_urls": market_search_urls,
         "sources": source_status,
         "buckets": [
             {"label": b.label, "count": b.count, "percent": b.percent}

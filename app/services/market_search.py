@@ -9,6 +9,7 @@
 """
 import asyncio
 import logging
+import os
 import re
 import urllib.parse
 from dataclasses import dataclass, field
@@ -16,6 +17,9 @@ from dataclasses import dataclass, field
 import httpx
 
 logger = logging.getLogger("market_search")
+
+# Прокси для обхода антибота (например, http://user:pass@host:port)
+PROXY_URL = os.getenv("PROXY_URL", "")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
@@ -45,6 +49,7 @@ class MarketSearch:
             timeout=20.0,
             headers={"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"},
             follow_redirects=True,
+            proxy=PROXY_URL or None,
         )
 
     async def close(self):

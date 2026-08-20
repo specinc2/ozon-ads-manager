@@ -35,15 +35,18 @@
                         </div>
                         <div class="col-md-4 mb-2">
                             <label class="form-label">Комиссия Ozon, %</label>
-                            <input type="number" step="0.1" class="form-control" name="commission_pct" value="20">
+                            <input type="number" step="0.1" class="form-control" name="commission_pct" value="{{ defaults.commission_pct }}">
                         </div>
                         <div class="col-md-4 mb-2">
                             <label class="form-label">Логистика, ₽/шт</label>
-                            <input type="number" step="0.1" class="form-control" name="logistics_cost" value="50">
+                            <input type="number" step="0.1" class="form-control" name="logistics_cost" value="{{ defaults.logistics_cost }}">
                         </div>
                         <div class="col-md-4 mb-2">
                             <label class="form-label">% выкупа</label>
-                            <input type="number" step="0.1" class="form-control" name="buyout_pct" value="80">
+                            <input type="number" step="0.1" class="form-control" name="buyout_pct" value="{{ defaults.buyout_pct }}">
+                        </div>
+                        <div class="col-12">
+                            <small class="text-muted">Значения по умолчанию — средние по вашим товарам (из Seller API).</small>
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary w-100 mt-3" id="analyzeBtn">
@@ -76,6 +79,9 @@
                 <div class="card-body">
                     <!-- Статус источников -->
                     <div id="sourceStatus" class="mb-3"></div>
+
+                    <!-- Кнопки открыть поиск на маркетплейсах -->
+                    <div id="marketSearchButtons" class="mb-3 d-none"></div>
 
                     <!-- Ссылки из поиска по фото -->
                     <div id="photoLinks" class="mb-3 d-none"></div>
@@ -177,6 +183,18 @@ function renderResult(data) {
         return `<span class="badge bg-${cls} me-1">${txt}</span>`;
     }).join('');
     document.getElementById('sourceStatus').innerHTML = srcHtml;
+
+    // Кнопки «открыть поиск» на маркетплейсах (если парсинг не сработал)
+    if (data.market_search_urls) {
+        const msHtml = Object.entries(data.market_search_urls)
+            .map(([key, url]) => `<a href="${url}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary me-1 mb-1">${srcNames[key]}</a>`)
+            .join('');
+        const box = document.getElementById('marketSearchButtons');
+        if (box) {
+            box.innerHTML = '<span class="small text-muted me-2">Открыть поиск:</span>' + msHtml;
+            box.classList.remove('d-none');
+        }
+    }
 
     // Ссылки из поиска по фото
     const photoLinksBox = document.getElementById('photoLinks');
