@@ -32,25 +32,22 @@ async def get_active_seller_client(db: AsyncSession, user_id: int) -> SellerClie
 
 
 async def sync_seller_data(db: AsyncSession, user_id: int, client: SellerClient) -> dict:
-    """Подтягивает экономику всех товаров пользователя из Seller API.
+    """Подтягивает экономику ВСЕХ товаров магазина из Seller API.
 
-    Возвращает статистику: {updated, with_stock, with_commission}.
+    Создаёт ProductInfo для каждого товара каталога (не только рекламных),
+    заполняет остатки, цены, комиссии, акции, аналитику.
+    Себестоимость Ozon не отдаёт — остаётся ручной ввод.
+
+    Возвращает статистику: {updated, with_stock, with_commission, products}.
     """
-    # Все товары пользователя (из рекламных кампаний)
-    result = await db.execute(
-        select(Product).join(Campaign, Campaign.id == Product.campaign_id)
-        .where(Campaign.user_id == user_id)
-    )
-    products = list(result.scalars().all())
-    if not products:
-        return {"updated": 0, "with_stock": 0, "with_commission": 0, "products": 0}
-
-    # Карта sku (Ozon SKU) -> offer_id через список товаров продавца
+    # Полный каталог товаров продавца
     try:
         all_products = await client.list_products()
     except SellerAPIError as e:
         logger.warning("Не удалось получить список товаров: %s", e)
         all_products = []
+
+    # sku (Ozon) -> offer_id; также собираем имена из рекламных кампаний
     sku_to_offer: dict[str, str] = {}
     for item in all_products:
         sku = item.get("sku")
@@ -58,13 +55,26 @@ async def sync_seller_data(db: AsyncSession, user_id: int, client: SellerClient)
         if sku is not None and offer_id:
             sku_to_offer[str(sku)] = str(offer_id)
 
-    # Ищем offer_id для наших товаров (по sku, а также пробуем сам sku как offer_id)
-    product_skus = {p.sku for p in products}
+    # Все SKU, которые есть в каталоге (77+) или в рекламных кампаниях
+    all_skus = set(sku_to_offer.keys())
+    result = await db.execute(
+        select(Product).join(Campaign, Campaign.id == Product.campaign_id)
+        .where(Campaign.user_id == user_id)
+    )
+    ad_products = list(result.scalars().all())
+    ad_names: dict[str, str] = {}
+    for p in ad_products:
+        all_skus.add(p.sku)
+        ad_names.setdefault(p.sku, p.name or "")
+
     offer_ids: list[str] = []
-    for sku in product_skus:
+    for sku in all_skus:
         offer = sku_to_offer.get(str(sku)) or str(sku)
         if offer not in offer_ids:
             offer_ids.append(offer)
+
+    if not offer_ids:
+        return {"updated": 0, "with_stock": 0, "with_commission": 0, "products": 0}
 
     stocks = await client.get_stocks(offer_ids)
     prices = await client.get_prices(offer_ids)
@@ -94,22 +104,18 @@ async def sync_seller_data(db: AsyncSession, user_id: int, client: SellerClient)
     for info in existing.scalars().all():
         info_map[info.sku] = info
 
-    seen_skus: set[str] = set()
-    for product in products:
-        sku = product.sku
-        if sku in seen_skus:
-            continue
-        seen_skus.add(sku)
-
+    for sku in sorted(all_skus):
         offer = sku_to_offer.get(str(sku)) or str(sku)
         stock = stocks.get(offer)
         price = prices.get(offer)
 
         info = info_map.get(sku)
         if info is None:
-            info = ProductInfo(user_id=user_id, sku=sku, name=product.name)
+            info = ProductInfo(user_id=user_id, sku=sku, name=ad_names.get(sku, ""))
             db.add(info)
             info_map[sku] = info
+        elif not info.name and ad_names.get(sku):
+            info.name = ad_names[sku]
 
         # Остатки
         if stock:
@@ -117,7 +123,7 @@ async def sync_seller_data(db: AsyncSession, user_id: int, client: SellerClient)
             if info.leftovers:
                 with_stock += 1
 
-        # Цены и комиссии
+        # Цены и комиссии (себестоимость не трогаем — только ручной ввод)
         if price:
             if price.get("price"):
                 info.price = price["price"]
@@ -132,7 +138,7 @@ async def sync_seller_data(db: AsyncSession, user_id: int, client: SellerClient)
             if info.commission_pct:
                 with_commission += 1
 
-        # Аналитика: заказы и выручка за месяц (метрики работают, % выкупа — вручную)
+        # Аналитика: заказы и выручка за месяц
         metrics = analytics.get(str(sku))
         if metrics:
             ordered = float(metrics.get("ordered_units") or 0)
@@ -150,7 +156,7 @@ async def sync_seller_data(db: AsyncSession, user_id: int, client: SellerClient)
         "updated": updated,
         "with_stock": with_stock,
         "with_commission": with_commission,
-        "products": len(products),
+        "products": len(all_skus),
     }
 
 

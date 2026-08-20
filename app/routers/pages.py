@@ -529,65 +529,74 @@ async def products_page(request: Request, db: AsyncSession = Depends(get_db)):
     if not user:
         return RedirectResponse("/login", status_code=302)
 
-    # Все товары пользователя из всех кампаний
-    result = await db.execute(
-        select(Product).join(Campaign).where(Campaign.user_id == user.id).order_by(Product.name)
-    )
-    products = list(result.scalars().all())
+    # Все ProductInfo (экономика) — все товары из ЛК, а не только рекламные
+    from datetime import date, timedelta
+    cutoff = date.today() - timedelta(days=30)
 
-    # Информация по экономике (ProductInfo) по SKU
-    if products:
-        skus = list({p.sku for p in products})
-        result = await db.execute(
-            select(ProductInfo).where(ProductInfo.user_id == user.id, ProductInfo.sku.in_(skus))
-        )
-        info_map = {i.sku: i for i in result.scalars().all()}
-    else:
-        info_map = {}
+    from sqlalchemy import func
+    from app.models import CampaignStat, Product, Campaign
+
+    # Все товары из каталога (ProductInfo)
+    result = await db.execute(
+        select(ProductInfo).where(ProductInfo.user_id == user.id).order_by(ProductInfo.name)
+    )
+    all_infos = list(result.scalars().all())
+
+    # Рекламная статистика по SKU (агрегированная за 30 дней по всем кампаниям)
+    ad_stats_rows = await db.execute(
+        select(
+            Product.sku,
+            func.coalesce(func.sum(CampaignStat.spend), 0),
+            func.coalesce(func.sum(CampaignStat.revenue), 0),
+            func.coalesce(func.sum(CampaignStat.orders), 0),
+            func.coalesce(func.sum(CampaignStat.impressions), 0),
+            func.coalesce(func.sum(CampaignStat.clicks), 0),
+        ).select_from(Product)
+        .join(CampaignStat, CampaignStat.campaign_id == Product.campaign_id)
+        .join(Campaign, Campaign.id == Product.campaign_id)
+        .where(Campaign.user_id == user.id, CampaignStat.stat_date >= cutoff)
+        .group_by(Product.sku)
+    )
+    ad_stats: dict[str, tuple] = {}
+    for row in ad_stats_rows:
+        sku = str(row[0])
+        ad_stats[sku] = (float(row[1]), float(row[2]), int(row[3]), int(row[4]), int(row[5]))
 
     # Собираем карточки с экономикой
     from app.services.economics import calculate, from_info
     card_list = []
-    for p in products:
-        info = info_map.get(p.sku)
-        econ = from_info(info, sku=p.sku, name=p.name)
-        # Статистика из рекламы (за 30 дней)
-        from app.models import CampaignStat
-        from sqlalchemy import func
-        from datetime import date, timedelta
-        cutoff = date.today() - timedelta(days=30)
-        stat = await db.execute(
-            select(
-                func.coalesce(func.sum(CampaignStat.spend), 0),
-                func.coalesce(func.sum(CampaignStat.revenue), 0),
-                func.coalesce(func.sum(CampaignStat.orders), 0),
-                func.coalesce(func.sum(CampaignStat.impressions), 0),
-                func.coalesce(func.sum(CampaignStat.clicks), 0),
-            ).where(
-                CampaignStat.campaign_id == p.campaign_id,
-                CampaignStat.stat_date >= cutoff,
-            )
-        )
-        row = stat.one()
-        econ.ad_spend = float(row[0])
-        econ.ad_revenue = float(row[1])
-        econ.ad_orders = int(row[2])
-        # Для monthly_revenue — используем данные из ProductInfo или только рекламную
+    for info in all_infos:
+        econ = from_info(info, sku=info.sku, name=info.name or "")
+        # Рекламная статистика
+        stats = ad_stats.get(info.sku, (0, 0, 0, 0, 0))
+        econ.ad_spend = stats[0]
+        econ.ad_revenue = stats[1]
+        econ.ad_orders = stats[2]
+        impressions = int(stats[3])
+        clicks = int(stats[4])
         if econ.monthly_revenue <= 0:
             econ.total_revenue = econ.ad_revenue
         calculate(econ)
 
-        # Низкая посещаемость
-        if row[3] < 100 and row[2] < 5:
-            econ.low_traffic = True
+        # Низкая посещаемость (по рекламным показам)
+        econ.low_traffic = bool(impressions < 100 and stats[2] < 5)
+
+        # Кампании, в которых участвует товар (для информации)
+        camp_result = await db.execute(
+            select(Campaign.title).select_from(Product)
+            .join(Campaign, Campaign.id == Product.campaign_id)
+            .where(Campaign.user_id == user.id, Product.sku == info.sku)
+            .distinct()
+        )
+        campaign_titles = [r[0] for r in camp_result.all()]
 
         card_list.append({
-            "product": p,
-            "campaign_title": (await db.get(Campaign, p.campaign_id)).title if p.campaign_id else "",
+            "info": info,
             "econ": econ,
-            "info_id": info.id if info else None,
-            "impressions": int(row[3]),
-            "clicks": int(row[4]),
+            "impressions": impressions,
+            "clicks": clicks,
+            "campaign_titles": ", ".join(campaign_titles[:3]) + ("…" if len(campaign_titles) > 3 else ""),
+            "in_ad": bool(campaign_titles),
         })
 
     ctx["cards"] = card_list
