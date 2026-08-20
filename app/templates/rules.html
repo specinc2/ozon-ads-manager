@@ -130,7 +130,7 @@
                         {{ 'Активно' if r.is_active else 'Выключено' }}
                     </span>
                 </td>
-                <td>{{ r.last_triggered_at.strftime('%d.%m.%Y %H:%M') if r.last_triggered_at else '—' }}</td>
+                <td>{{ r.last_triggered_at|msk if r.last_triggered_at else '—' }}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-warning" onclick="toggleRule({{ r.id }})">
                         <i class="bi bi-toggle-on"></i>

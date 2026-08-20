@@ -160,7 +160,7 @@
                                 {% else %}ИИ-подбор{% endif %}
                                 · SKU: {{ r.sku or 'все' }}
                                 · Кампания: {{ r.campaign_id or 'все' }}
-                                {% if r.last_triggered_at %}· сработало {{ r.last_triggered_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}
+                                {% if r.last_triggered_at %}· сработало {{ r.last_triggered_at|msk }}{% endif %}
                             </div>
                             {% if r.params %}
                             <code class="small">{{ r.params|tojson }}</code>

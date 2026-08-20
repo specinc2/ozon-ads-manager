@@ -1,5 +1,5 @@
 """HTML-страницы приложения: дашборд, кампании, статистика, правила, настройки."""
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -41,6 +41,18 @@ from app.services.statistics import get_aggregated_stats, get_stats_for_period
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
+
+MSK_OFFSET = timedelta(hours=3)
+
+
+def msk_time(dt) -> str:
+    """Переводит UTC в МСК (UTC+3) и форматирует для отображения."""
+    if dt is None:
+        return ""
+    return (dt + MSK_OFFSET).strftime("%d.%m.%Y %H:%M:%S")
+
+
+templates.env.filters["msk"] = msk_time
 
 
 def flash(request: Request, message: str, category: str = "info") -> None:

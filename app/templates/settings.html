@@ -99,12 +99,12 @@
                                 Client-Id: <code>{{ k.client_id_masked }}</code>
                                 · ID: {{ k.id }}
                                 {% if k.last_verified_at %}
-                                · проверен {{ k.last_verified_at.strftime('%d.%m.%Y %H:%M') }}
+                                · проверен {{ k.last_verified_at|msk }}
                                 {% endif %}
                                 {% if k.api_key_expires_at %}
-                                · истекает {{ k.api_key_expires_at.strftime('%d.%m.%Y %H:%M') }}
+                                · истекает {{ k.api_key_expires_at|msk }}
                                 {% endif %}
-                                <br>создан {{ k.created_at.strftime('%d.%m.%Y %H:%M') }}
+                                <br>создан {{ k.created_at|msk }}
                             </div>
                         </div>
                         <div class="btn-group btn-group-sm">
