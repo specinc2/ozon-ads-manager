@@ -67,7 +67,7 @@ class MarketSearch:
 
     def __init__(self):
         self._client = httpx.AsyncClient(
-            timeout=20.0,
+            timeout=12.0,
             headers={"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"},
             follow_redirects=True,
             proxy=PROXY_URL or None,
@@ -78,22 +78,24 @@ class MarketSearch:
 
     async def search_all(self, query: str, limit: int = 20) -> list[SearchResult]:
         """Ищет по всем источникам параллельно. Ошибки не роняют общий результат."""
-        results: list[SearchResult] = []
-        for marketplace in ("wb", "ozon", "ym", "aliexpress"):
+        async def safe_search(marketplace: str) -> SearchResult:
             try:
                 if marketplace == "wb":
-                    result = await self.search_wb(query, limit)
+                    return await self.search_wb(query, limit)
                 elif marketplace == "ozon":
-                    result = await self.search_ozon(query, limit)
+                    return await self.search_ozon(query, limit)
                 elif marketplace == "ym":
-                    result = await self.search_yandex_market(query, limit)
+                    return await self.search_yandex_market(query, limit)
                 else:
-                    result = await self.search_aliexpress(query, limit)
+                    return await self.search_aliexpress(query, limit)
             except Exception as e:
                 logger.warning("Поиск на %s не удался: %s", marketplace, e)
-                result = SearchResult(marketplace=marketplace, ok=False, error=str(e)[:200])
-            results.append(result)
-        return results
+                return SearchResult(marketplace=marketplace, ok=False, error=str(e)[:200])
+
+        results = await asyncio.gather(
+            safe_search("wb"), safe_search("ozon"), safe_search("ym"), safe_search("aliexpress"),
+        )
+        return list(results)
 
     # ------------------------------------------------------------------
     # Wildberries
@@ -132,7 +134,7 @@ class MarketSearch:
                     "api_key": SCRAPERAPI_API_KEY, "url": url,
                     "render": "true", "country_code": "ru",
                 })
-                async with httpx.AsyncClient(timeout=60.0) as sa_client:
+                async with httpx.AsyncClient(timeout=25.0) as sa_client:
                     resp = await sa_client.get(sa_url)
                     if resp.status_code == 200:
                         return MockResponse(status_code=200, text=resp.text)
@@ -146,7 +148,7 @@ class MarketSearch:
                     "apikey": ZENROWS_API_KEY, "url": url,
                     "js_render": "true", "premium_proxy": "true", "proxy_country": "ru",
                 })
-                async with httpx.AsyncClient(timeout=60.0) as zr_client:
+                async with httpx.AsyncClient(timeout=25.0) as zr_client:
                     resp = await zr_client.get(zr_url)
                     if resp.status_code == 200 and resp.text:
                         return MockResponse(status_code=200, text=resp.text)
@@ -160,7 +162,7 @@ class MarketSearch:
                     "token": CRAWLBASE_TOKEN, "url": url,
                     "render": "true", "country": "ru",
                 })
-                async with httpx.AsyncClient(timeout=60.0) as cb_client:
+                async with httpx.AsyncClient(timeout=25.0) as cb_client:
                     resp = await cb_client.get(cb_url)
                     if resp.status_code == 200:
                         data = resp.json()
@@ -177,7 +179,7 @@ class MarketSearch:
                     "url": url, "x-api-key": SCRAPINGANT_API_KEY,
                     "browser": "false" if "ozon" not in url else "true",
                 })
-                async with httpx.AsyncClient(timeout=60.0) as sa_client:
+                async with httpx.AsyncClient(timeout=25.0) as sa_client:
                     resp = await sa_client.get(sa_url)
                     if resp.status_code == 200:
                         data = resp.json()
@@ -204,7 +206,7 @@ class MarketSearch:
             resp = await self._client.get(url, headers={"Accept": "application/json"})
             if resp.status_code == 429:
                 # WB жёстко лимитирует — ждём между попытками
-                await asyncio.sleep(5 + attempt * 8)
+                await asyncio.sleep(2 + attempt * 2)
                 continue
             break
         if resp is None or resp.status_code == 429:

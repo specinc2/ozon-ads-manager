@@ -59,7 +59,7 @@ class YandexPhotoSearch:
 
     def __init__(self):
         self._client = httpx.AsyncClient(
-            timeout=25.0,
+            timeout=18.0,
             headers={"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"},
             follow_redirects=True,
         )
