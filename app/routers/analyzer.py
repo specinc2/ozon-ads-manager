@@ -68,7 +68,8 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
     """Обрабатывает запрос анализа: поиск по фото + цены + рекомендации."""
     user = await get_current_user(request, db)
     if not user:
-        return {"ok": False, "error": "Требуется вход"}
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": False, "error": "Требуется вход. Обновите страницу и войдите заново."}, status_code=401)
 
     form = await request.form()
     product_name = (form.get("product_name") or "").strip()

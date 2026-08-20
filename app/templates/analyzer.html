@@ -147,6 +147,18 @@ document.getElementById('analyzerForm')?.addEventListener('submit', async (e) =>
 
     try {
         const resp = await fetch('/analyzer/api', { method: 'POST', body: fd });
+        // Проверяем, что ответ — JSON (иначе это HTML ошибки/таймаута)
+        const ct = resp.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+            if (resp.status === 401) {
+                showError('Сессия истекла. Обновите страницу и войдите заново.');
+            } else if (resp.status >= 500) {
+                showError('Сервер не успел обработать запрос (таймаут). Попробуйте ещё раз или уменьшите запрос.');
+            } else {
+                showError('Ошибка сервера (' + resp.status + '). Попробуйте ещё раз.');
+            }
+            return;
+        }
         const data = await resp.json();
         if (!data.ok) {
             showError(data.error || 'Ошибка анализа');
