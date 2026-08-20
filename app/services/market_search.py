@@ -249,6 +249,14 @@ class MarketSearch:
             return SearchResult(marketplace="ozon", ok=False,
                                 error="Ozon закрыт антиботом. Добавьте ключ бесплатного скрейпера в .env: SCRAPERAPI_API_KEY / ZENROWS_API_KEY / CRAWLBASE_TOKEN")
         if resp.status_code in (307, 403, 404) or "block" in resp.text.lower()[:200]:
+            # Проверяем, не challenge ли это (JSON с incidentId/challengeURL)
+            try:
+                data = resp.json()
+                if data.get("challengeURL") or data.get("incidentId"):
+                    return SearchResult(marketplace="ozon", ok=False,
+                                        error="Ozon выдал challenge: куки устарели или неполные. Обновите их в Настройках — скопируйте полный Cookie из Network (F12 → Сеть → первый запрос → Headers → Cookie)")
+            except (ValueError, TypeError):
+                pass
             return SearchResult(marketplace="ozon", ok=False, error="Ozon закрыт антиботом (307/403)")
         resp.raise_for_status()
         points: list[PricePoint] = []

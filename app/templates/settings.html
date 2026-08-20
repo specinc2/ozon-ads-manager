@@ -98,15 +98,15 @@
                                value="{{ proxy_setting.expires_at.isoformat() if proxy_setting and proxy_setting.expires_at else '' }}">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Куки Ozon (для обхода антибота)</label>
+                        <label class="form-label">Куки Ozon (из Network — полный Cookie-заголовок)</label>
                         <textarea class="form-control" name="ozon_cookies" rows="3"
-                                  placeholder='{"__Secure-access-token": "...", "x-o3-abt-experiments": "..."}'>{{ proxy_setting.ozon_cookies if proxy_setting and proxy_setting.ozon_cookies else '' }}</textarea>
+                                  placeholder='abt_data=7.xxx...; __Secure-access-token=xxx; xcid=xxx; rfuid=xxx'>{{ proxy_setting.ozon_cookies if proxy_setting and proxy_setting.ozon_cookies else '' }}</textarea>
                         <div class="form-text">
-                            <strong>Как получить куки (1 минута):</strong><br>
-                            1. Отключите VPN и откройте <code>https://www.ozon.ru</code> в браузере — дождитесь полной загрузки (challenge решится сам).<br>
-                            2. Нажмите <strong>F12</strong> → вкладка <strong>«Сеть/Network»</strong> → обновите страницу (F5) → кликните первый запрос → вкладка <strong>«Заголовки/Headers»</strong> → найдите <strong>«Cookie»</strong> → скопируйте всю строку вида <code>abt_data=...; xcid=...</code>.<br>
-                            3. Вставьте строку в поле выше и нажмите «Сохранить прокси».<br>
-                            <span class="text-muted">Можно и JSON: <code>{"__Secure-access-token": "...", "abt_data": "..."}</code> (F12 → Application → Cookies).</span>
+                            <strong>Как получить куки из Network (1 минута, правильный способ):</strong><br>
+                            1. Отключите VPN и откройте <code>https://www.ozon.ru</code> в браузере — дождитесь полной загрузки.<br>
+                            2. Нажмите <strong>F12</strong> → вкладка <strong>«Сеть/Network»</strong> → <strong>обновите страницу (F5)</strong> → кликните <strong>первый запрос</strong> → вкладка <strong>«Заголовки/Headers»</strong> → раздел <strong>«Request Headers»</strong> → найдите строку <strong>«Cookie:»</strong> → выделите и скопируйте <strong>всё значение после «Cookie:»</strong> (длинная строка вида <code>abt_data=7.xxx; __Secure-access-token=xxx; xcid=xxx; rfuid=xxx; _ozon_session=xxx</code>).<br>
+                            3. <strong>Вставьте эту строку целиком</strong> в поле выше и нажмите «Сохранить прокси».<br>
+                            <span class="text-danger small"><i class="bi bi-exclamation-triangle"></i> Важно: копируйте из Network, а не из Application. Куки из Application по одной часто не работают — нужны все сразу как единый Cookie-заголовок.</span>
                         </div>
                     </div>
                     {% if proxy_setting and proxy_setting.proxy_url %}
