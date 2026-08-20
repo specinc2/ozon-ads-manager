@@ -12,6 +12,13 @@
     </div>
 </div>
 
+{% if proxy_warning %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-exclamation-triangle"></i> {{ proxy_warning }}</span>
+    <a href="/settings" class="btn btn-sm btn-outline-warning">Настройки</a>
+</div>
+{% endif %}
+
 <!-- Общие показатели -->
 <div class="row mb-4">
     <div class="col-md-3 mb-3">

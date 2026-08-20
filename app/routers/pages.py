@@ -1,5 +1,5 @@
 """HTML-страницы приложения: дашборд, кампании, статистика, правила, настройки."""
-from datetime import date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -184,6 +184,22 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         ).order_by(Notification.ts.desc()).limit(10)
     )
     ctx["unread_notifications"] = list(result.scalars().all())
+
+    # Предупреждение об истекающем прокси
+    from app.models import ProxySetting
+    proxy_result = await db.execute(
+        select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
+    )
+    proxy_setting = proxy_result.scalar_one_or_none()
+    if proxy_setting and proxy_setting.proxy_url:
+        days = proxy_setting.days_left
+        if days is not None:
+            if days < 0:
+                ctx["proxy_warning"] = f"Прокси истёк { -days } дн. назад. Обновите в Настройках."
+            elif days == 0:
+                ctx["proxy_warning"] = "Прокси истекает сегодня. Обновите в Настройках."
+            elif days <= 7:
+                ctx["proxy_warning"] = f"Прокси истекает через {days} дн. Обновите в Настройках."
 
     return templates.TemplateResponse("dashboard.html", ctx)
 
@@ -413,7 +429,59 @@ async def settings_page(request: Request, db: AsyncSession = Depends(get_db)):
     ctx["api_keys"] = api_keys
     ctx["key_infos"] = key_infos
     ctx["has_seller_keys"] = any(k["seller_enabled"] and k["is_active"] for k in key_infos)
+
+    # Прокси для анализатора (с датой окончания)
+    from app.models import ProxySetting
+    proxy_result = await db.execute(
+        select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
+    )
+    proxy_setting = proxy_result.scalar_one_or_none()
+    ctx["proxy_setting"] = proxy_setting
+
     return templates.TemplateResponse("settings.html", ctx)
+
+
+@router.post("/settings/proxy")
+async def save_proxy(request: Request, db: AsyncSession = Depends(get_db)):
+    ctx = await _common_context(request, db)
+    user = ctx["user"]
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+
+    from datetime import date as date_cls
+    from app.models import ProxySetting
+
+    form = await request.form()
+    proxy_url = (form.get("proxy_url") or "").strip()
+    expires_raw = (form.get("expires_at") or "").strip()
+
+    # Валидация даты (YYYY-MM-DD)
+    expires_at = None
+    if expires_raw:
+        try:
+            expires_at = date_cls.fromisoformat(expires_raw)
+        except ValueError:
+            flash(request, "Неверный формат даты окончания", "danger")
+            return RedirectResponse("/settings", status_code=302)
+
+    result = await db.execute(
+        select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
+    )
+    setting = result.scalar_one_or_none()
+    if setting is None:
+        setting = ProxySetting(user_id=user.id)
+        db.add(setting)
+
+    setting.proxy_url = proxy_url
+    setting.expires_at = expires_at
+    setting.updated_at = datetime.utcnow()
+    await db.commit()
+
+    if proxy_url:
+        flash(request, "Прокси сохранён", "success")
+    else:
+        flash(request, "Прокси удалён", "success")
+    return RedirectResponse("/settings", status_code=302)
 
 
 @router.post("/settings/seller-keys")

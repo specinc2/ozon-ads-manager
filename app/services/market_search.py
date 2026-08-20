@@ -65,12 +65,14 @@ class MockResponse:
 class MarketSearch:
     """Ищет цены по запросу на нескольких маркетплейсах."""
 
-    def __init__(self):
+    def __init__(self, proxy_override: str = ""):
+        """proxy_override — прокси из настроек пользователя (БД), приоритетнее PROXY_URL из env."""
+        effective_proxy = proxy_override or PROXY_URL or None
         self._client = httpx.AsyncClient(
             timeout=12.0,
             headers={"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"},
             follow_redirects=True,
-            proxy=PROXY_URL or None,
+            proxy=effective_proxy,
         )
 
     async def close(self):

@@ -76,6 +76,50 @@
 
 <div class="row mt-4">
     <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Прокси для анализатора цен</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Прокси используется для парсинга цен на Ozon/AliExpress (обход антибота).
+                    Укажите срок действия, чтобы видеть, сколько дней осталось.
+                </p>
+                <form method="POST" action="/settings/proxy">
+                    <div class="mb-3">
+                        <label class="form-label">Прокси (http://user:pass@ip:port)</label>
+                        <input type="text" class="form-control" name="proxy_url"
+                               value="{{ proxy_setting.proxy_url if proxy_setting else '' }}"
+                               placeholder="http://логин:пароль@ip:порт">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Срок действия до (необязательно)</label>
+                        <input type="date" class="form-control" name="expires_at"
+                               value="{{ proxy_setting.expires_at.isoformat() if proxy_setting and proxy_setting.expires_at else '' }}">
+                    </div>
+                    {% if proxy_setting and proxy_setting.proxy_url %}
+                    <div class="alert {% if proxy_setting.days_left is not none and proxy_setting.days_left < 7 %}alert-warning{% else %}alert-success{% endif %} py-2 small">
+                        {% if proxy_setting.days_left is not none %}
+                            {% if proxy_setting.days_left < 0 %}
+                            <i class="bi bi-exclamation-triangle"></i> Прокси истёк {{ -proxy_setting.days_left }} дн. назад — обновите срок.
+                            {% elif proxy_setting.days_left == 0 %}
+                            <i class="bi bi-exclamation-triangle"></i> Прокси истекает сегодня.
+                            {% else %}
+                            <i class="bi bi-check-circle"></i> Осталось дней: <strong>{{ proxy_setting.days_left }}</strong>
+                            {% endif %}
+                        {% else %}
+                        <i class="bi bi-info-circle"></i> Срок действия не указан.
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-save"></i> Сохранить прокси
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0">Подключённые ключи</h5>

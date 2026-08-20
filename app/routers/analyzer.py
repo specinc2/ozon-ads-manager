@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import BASE_DIR
@@ -118,7 +119,15 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         return {"ok": False, "error": "Укажите название товара или загрузите фото"}
 
     # 2. Поиск цен по маркетплейсам (текстовый запрос по названию)
-    searcher = MarketSearch()
+    # Прокси из настроек пользователя (если указан)
+    from app.models import ProxySetting
+    proxy_result = await db.execute(
+        select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
+    )
+    proxy_setting = proxy_result.scalar_one_or_none()
+    proxy_url = proxy_setting.proxy_url if proxy_setting and proxy_setting.proxy_url else ""
+
+    searcher = MarketSearch(proxy_override=proxy_url)
     try:
         query = product_name or "товар"
         results = await searcher.search_all(query, limit=15)

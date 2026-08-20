@@ -186,6 +186,29 @@ class ProductInfo(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class ProxySetting(Base):
+    """Прокси для анализатора цен (обход антибота Ozon/AliExpress).
+
+    Хранит URL прокси и дату окончания — чтобы видеть, сколько дней осталось.
+    """
+
+    __tablename__ = "proxy_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    proxy_url: Mapped[str] = mapped_column(Text, default="")   # http://user:pass@ip:port
+    expires_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    @property
+    def days_left(self) -> int | None:
+        """Сколько дней осталось до окончания прокси."""
+        if self.expires_at is None:
+            return None
+        return (self.expires_at - date.today()).days
+
+
 class BidderRule(Base):
     """Правило бидера — автоматическое управление ставками товара.
 
