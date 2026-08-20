@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings, BASE_DIR
 from app.database import init_db
-from app.routers import api, pages
+from app.routers import analyzer, api, pages
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,3 +49,4 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 
 app.include_router(pages.router)
 app.include_router(api.router)
+app.include_router(analyzer.router)

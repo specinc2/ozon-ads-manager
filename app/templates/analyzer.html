@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Анализатор цен — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-1"><i class="bi bi-search"></i> Анализатор цен и рекомендации</h1>
+<p class="text-muted mb-4">
+    Загрузите фото товара (опционально) и укажите название — сервис найдёт цены
+    конкурентов на Wildberries, Яндекс.Маркете, Ozon и AliExpress, покажет разбивку
+    по ценовым вилкам и порекомендует цену старта, вход в рекламу и маржу.
+</p>
+
+<div class="row">
+    <div class="col-md-5">
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="card-title mb-0">Данные товара</h5></div>
+            <div class="card-body">
+                <form id="analyzerForm">
+                    <div class="mb-3">
+                        <label class="form-label">Фото товара (необязательно)</label>
+                        <input type="file" class="form-control" name="photo" id="photoInput" accept="image/*">
+                        <div class="form-text">Фото пока отображается для контекста. Определение по фото — скоро.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Название товара *</label>
+                        <input type="text" class="form-control" name="product_name" id="productName" required
+                               placeholder="Например: разъем аудио Jack 3.5 мм">
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">Себестоимость, ₽</label>
+                            <input type="number" step="0.01" min="0" class="form-control" name="cost_price" placeholder="необязательно">
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">Категория (для комиссии)</label>
+                            <input type="text" class="form-control" name="category" placeholder="например: Электроника">
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Комиссия Ozon, %</label>
+                            <input type="number" step="0.1" class="form-control" name="commission_pct" value="20">
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Логистика, ₽/шт</label>
+                            <input type="number" step="0.1" class="form-control" name="logistics_cost" value="50">
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">% выкупа</label>
+                            <input type="number" step="0.1" class="form-control" name="buyout_pct" value="80">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 mt-3" id="analyzeBtn">
+                        <i class="bi bi-search"></i> Анализировать
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        <!-- Фото -->
+        <div id="photoPreview" class="mb-3 d-none">
+            <img id="photoPreviewImg" class="img-thumbnail" style="max-height: 180px;" alt="Фото товара">
+        </div>
+
+        <!-- Загрузка -->
+        <div id="analyzing" class="text-center py-5 d-none">
+            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
+            <p class="mt-3 text-muted">Ищем цены на маркетплейсах… это может занять 20–60 секунд.</p>
+        </div>
+
+        <!-- Результат -->
+        <div id="result" class="d-none">
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0" id="resultTitle">Результат</h5>
+                    <span class="badge bg-light text-dark" id="resultTotal"></span>
+                </div>
+                <div class="card-body">
+                    <!-- Статус источников -->
+                    <div id="sourceStatus" class="mb-3"></div>
+
+                    <!-- Вилки цен -->
+                    <h6>Разбивка цен конкурентов</h6>
+                    <div id="buckets"></div>
+
+                    <!-- Статистика -->
+                    <div class="row text-center mt-3" id="statsRow"></div>
+
+                    <!-- Рекомендация -->
+                    <div class="alert alert-success mt-3" id="recommendationBox"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ошибка -->
+        <div id="errorBox" class="alert alert-danger d-none"></div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+// Предпросмотр фото
+document.getElementById('photoInput')?.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = document.getElementById('photoPreviewImg');
+        img.src = e.target.result;
+        document.getElementById('photoPreview').classList.remove('d-none');
+    };
+    reader.readAsDataURL(file);
+});
+
+// Заполняем название из названия файла (грубо)
+document.getElementById('photoInput')?.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file || document.getElementById('productName').value) return;
+    const name = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+    if (name.length > 3) document.getElementById('productName').value = name;
+});
+
+document.getElementById('analyzerForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const fd = new FormData(form);
+
+    // Спрятать прошлый результат
+    document.getElementById('result').classList.add('d-none');
+    document.getElementById('errorBox').classList.add('d-none');
+    document.getElementById('analyzing').classList.remove('d-none');
+    const btn = document.getElementById('analyzeBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Анализ…';
+
+    try {
+        const resp = await fetch('/analyzer/api', { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (!data.ok) {
+            showError(data.error || 'Ошибка анализа');
+            return;
+        }
+        renderResult(data);
+    } catch (err) {
+        showError('Ошибка сети: ' + err.message);
+    } finally {
+        document.getElementById('analyzing').classList.add('d-none');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-search"></i> Анализировать';
+    }
+});
+
+function showError(msg) {
+    const box = document.getElementById('errorBox');
+    box.textContent = msg;
+    box.classList.remove('d-none');
+}
+
+function renderResult(data) {
+    document.getElementById('result').classList.remove('d-none');
+    document.getElementById('resultTitle').textContent = 'Результат: ' + data.product_name;
+    document.getElementById('resultTotal').textContent = 'Найдено цен: ' + data.stats.total;
+
+    // Источники
+    const srcNames = { wb: 'Wildberries', ozon: 'Ozon', ym: 'Яндекс.Маркет', aliexpress: 'AliExpress' };
+    const srcHtml = Object.entries(data.sources).map(([key, s]) => {
+        const cls = s.ok ? 'success' : 'secondary';
+        const txt = s.ok ? `${srcNames[key]}: ${s.count} цен` : `${srcNames[key]}: недоступен`;
+        return `<span class="badge bg-${cls} me-1">${txt}</span>`;
+    }).join('');
+    document.getElementById('sourceStatus').innerHTML = srcHtml;
+
+    // Вилки
+    const buckets = data.buckets;
+    let bHtml = '';
+    if (buckets.length) {
+        const maxPct = Math.max(...buckets.map(b => b.percent));
+        buckets.forEach(b => {
+            const w = Math.max(b.percent / maxPct * 100, 4);
+            bHtml += `
+                <div class="d-flex align-items-center mb-1">
+                    <div style="width: 110px;" class="text-end pe-2">${b.label}</div>
+                    <div class="progress flex-grow-1" style="height: 22px;">
+                        <div class="progress-bar bg-info" style="width: ${w}%">${b.percent}%</div>
+                    </div>
+                    <div style="width: 60px;" class="ps-2">${b.count} шт</div>
+                </div>`;
+        });
+    } else {
+        bHtml = '<p class="text-muted">Нет данных о ценах.</p>';
+    }
+    document.getElementById('buckets').innerHTML = bHtml;
+
+    // Статистика
+    const s = data.stats;
+    const statCards = [
+        ['Медиана', s.median ? s.median.toFixed(0) + ' ₽' : '—'],
+        ['Средняя', s.mean ? s.mean.toFixed(0) + ' ₽' : '—'],
+        ['Мин', s.min ? s.min.toFixed(0) + ' ₽' : '—'],
+        ['Макс', s.max ? s.max.toFixed(0) + ' ₽' : '—'],
+        ['Рекомендуем', s.recommended ? s.recommended.toFixed(0) + ' ₽' : '—'],
+    ];
+    document.getElementById('statsRow').innerHTML = statCards.map(([label, val]) => `
+        <div class="col">
+            <div class="text-muted small">${label}</div>
+            <div class="fs-5 fw-semibold">${val}</div>
+        </div>`).join('');
+
+    // Рекомендация
+    const r = data.recommendation;
+    const verdictBadge = {
+        enter: '<span class="badge bg-success">входить в рекламу</span>',
+        careful: '<span class="badge bg-warning text-dark">осторожно</span>',
+        skip: '<span class="badge bg-danger">не входить</span>',
+    }[r.ad_verdict] || '';
+    const md = r.summary || '';
+    document.getElementById('recommendationBox').innerHTML = `
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <strong>Рекомендация:</strong> ${verdictBadge}
+        </div>
+        <div>${md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</div>
+        <div class="small text-muted mt-2">
+            Маржа/шт: ${r.margin_per_unit.toFixed(0)} ₽ (${r.margin_pct}%) ·
+            Допустимая ДРР: ${r.breakeven_drr}%<br>${r.category_hint}
+        </div>`;
+}
+</script>
+{% endblock %}
