@@ -5,6 +5,7 @@
 """
 from contextlib import asynccontextmanager
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -46,6 +47,11 @@ app = FastAPI(
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
+
+# Загруженные фото (для поиска по картинке)
+_uploads_dir = BASE_DIR / "data" / "uploads"
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static-uploads", StaticFiles(directory=str(_uploads_dir)), name="static-uploads")
 
 app.include_router(pages.router)
 app.include_router(api.router)

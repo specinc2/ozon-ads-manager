@@ -71,11 +71,14 @@
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0" id="resultTitle">Результат</h5>
-                    <span class="badge bg-light text-dark" id="resultTotal"></span>
+                    <span class="badge bg-primary text-white" id="resultTotal"></span>
                 </div>
                 <div class="card-body">
                     <!-- Статус источников -->
                     <div id="sourceStatus" class="mb-3"></div>
+
+                    <!-- Ссылки из поиска по фото -->
+                    <div id="photoLinks" class="mb-3 d-none"></div>
 
                     <!-- Вилки цен -->
                     <h6>Разбивка цен конкурентов</h6>
@@ -156,8 +159,15 @@ function showError(msg) {
 
 function renderResult(data) {
     document.getElementById('result').classList.remove('d-none');
-    document.getElementById('resultTitle').textContent = 'Результат: ' + data.product_name;
+    document.getElementById('resultTitle').textContent = 'Результат: ' + (data.product_name || 'по фото');
     document.getElementById('resultTotal').textContent = 'Найдено цен: ' + data.stats.total;
+
+    // Фото
+    if (data.photo_url) {
+        const img = document.getElementById('photoPreviewImg');
+        img.src = data.photo_url;
+        document.getElementById('photoPreview').classList.remove('d-none');
+    }
 
     // Источники
     const srcNames = { wb: 'Wildberries', ozon: 'Ozon', ym: 'Яндекс.Маркет', aliexpress: 'AliExpress' };
@@ -167,6 +177,31 @@ function renderResult(data) {
         return `<span class="badge bg-${cls} me-1">${txt}</span>`;
     }).join('');
     document.getElementById('sourceStatus').innerHTML = srcHtml;
+
+    // Ссылки из поиска по фото
+    const photoLinksBox = document.getElementById('photoLinks');
+    if (photoLinksBox) {
+        let html = '';
+        // Внешние сервисы поиска по фото
+        const su = data.photo_search_urls || {};
+        if (su.yandex || su.google_lens) {
+            html += '<div class="mb-1 small text-muted">Искать по фото во внешних сервисах:</div>';
+            if (su.yandex) html += `<a href="${su.yandex}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1 mb-1">Яндекс.Картинки</a>`;
+            if (su.google_lens) html += `<a href="${su.google_lens}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1 mb-1">Google Lens</a>`;
+        }
+        if (data.photo_links && data.photo_links.length) {
+            html += '<div class="mb-1 small text-muted mt-2">Найдено по фото на маркетплейсах:</div>';
+            html += data.photo_links.slice(0, 12).map(l =>
+                `<a href="${l.url}" target="_blank" rel="noopener" class="badge bg-light border text-dark text-decoration-none me-1 mb-1">
+                    ${l.marketplace}</a>`).join('');
+        } else if (data.photo_url && !su.yandex && !su.google_lens) {
+            html += '<div class="mb-1 small text-muted">По фото ссылки не найдены.</div>';
+        }
+        if (html) {
+            photoLinksBox.innerHTML = html;
+            photoLinksBox.classList.remove('d-none');
+        }
+    }
 
     // Вилки
     const buckets = data.buckets;

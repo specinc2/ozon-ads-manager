@@ -1,18 +1,10 @@
-/* Дополнительные стили поверх Bootstrap */
+/* Дополнительные стили поверх Bootstrap (светлая тема) */
 body {
-    background-color: #f8f9fa;
-}
-
-[data-bs-theme="dark"] body {
-    background-color: #212529;
+    background-color: #f5f5f5;
 }
 
 .card {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-[data-bs-theme="dark"] .card {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* Таблицы */
@@ -27,19 +19,24 @@ body {
 
 /* Прогресс-бары бюджета */
 .progress {
-    background-color: rgba(0, 0, 0, 0.08);
+    background-color: #e9ecef;
 }
 
-[data-bs-theme="dark"] .progress {
-    background-color: rgba(255, 255, 255, 0.1);
+/* Цветовые индикаторы */
+.text-success {
+    color: #198754 !important;
+}
+.text-warning {
+    color: #ffc107 !important;
+}
+.text-danger {
+    color: #dc3545 !important;
 }
 
-/* Пульсация при синхронизации */
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+/* Навбар тёмный — на светлом фоне */
+.navbar-dark .navbar-nav .nav-link {
+    color: rgba(255, 255, 255, 0.85);
 }
-.spinning {
-    animation: spin 1s linear infinite;
-    display: inline-block;
+.navbar-dark .navbar-nav .nav-link:hover {
+    color: #fff;
 }
