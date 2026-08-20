@@ -32,12 +32,22 @@ async def analyzer_page(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 async def get_seller_defaults(db: AsyncSession, user_id: int) -> dict:
-    """Средние комиссия/логистика/эквайринг/выкуп по товарам пользователя (из Seller API)."""
+    """Реальные комиссии по категориям + средняя логистика/эквайринг/выкуп (из Seller API)."""
     from sqlalchemy import func, select
     from app.models import ProductInfo
+
+    # Уникальные комиссии (категорийные значения из Seller API)
+    result = await db.execute(
+        select(ProductInfo.commission_pct)
+        .where(ProductInfo.user_id == user_id, ProductInfo.commission_pct > 0)
+        .group_by(ProductInfo.commission_pct)
+        .order_by(ProductInfo.commission_pct)
+    )
+    commissions = [round(float(r[0]), 1) for r in result.all()]
+
+    # Средняя логистика, эквайринг, выкуп
     result = await db.execute(
         select(
-            func.avg(ProductInfo.commission_pct),
             func.avg(ProductInfo.logistics_cost),
             func.avg(ProductInfo.acquiring_pct),
             func.avg(ProductInfo.buyout_pct),
@@ -45,10 +55,11 @@ async def get_seller_defaults(db: AsyncSession, user_id: int) -> dict:
     )
     row = result.one()
     return {
-        "commission_pct": round(row[0], 1) if row[0] else 20.0,
-        "logistics_cost": round(row[1], 2) if row[1] else 50.0,
-        "acquiring_pct": round(row[2], 2) if row[2] else 1.5,
-        "buyout_pct": round(row[3], 1) if row[3] else 100.0,
+        "commissions": commissions or [20.0],
+        "default_commission": commissions[-1] if commissions else 20.0,
+        "logistics_cost": round(row[0], 2) if row[0] else 50.0,
+        "acquiring_pct": round(row[1], 2) if row[1] else 1.5,
+        "buyout_pct": round(row[2], 1) if row[2] else 100.0,
     }
 
 

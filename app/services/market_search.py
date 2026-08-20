@@ -20,6 +20,9 @@ logger = logging.getLogger("market_search")
 
 # Прокси для обхода антибота (например, http://user:pass@host:port)
 PROXY_URL = os.getenv("PROXY_URL", "")
+# Бесплатный сервис ScrapingAnt (до 10 000 запросов/мес): https://scrapingant.com
+# Ключ вписывается в .env — тогда Ozon/AliExpress ищутся через него (обходит антибот)
+SCRAPINGANT_API_KEY = os.getenv("SCRAPINGANT_API_KEY", "")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
@@ -39,6 +42,19 @@ class SearchResult:
     ok: bool
     prices: list[PricePoint] = field(default_factory=list)
     error: str = ""
+
+
+class MockResponse:
+    """Имитирует httpx.Response для контента, полученного через ScrapingAnt."""
+
+    def __init__(self, status_code: int = 200, text: str = ""):
+        self.status_code = status_code
+        self.text = text
+        self.headers = {"content-type": "text/html"}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=None, response=self)
 
 
 class MarketSearch:
@@ -77,6 +93,56 @@ class MarketSearch:
     # ------------------------------------------------------------------
     # Wildberries
     # ------------------------------------------------------------------
+
+    async def _fetch_with_antibot(self, url: str, **kwargs) -> httpx.Response | None:
+        """Запрашивает URL, пытаясь обойти антибот:
+        1. Прямой запрос
+        2. Через прокси (если PROXY_URL задан)
+        3. Через ScrapingAnt (если SCRAPINGANT_API_KEY задан, для Ozon/Ali)
+        """
+        if not kwargs.get("headers"):
+            kwargs["headers"] = {"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"}
+        # 1. Прямой
+        try:
+            resp = await self._client.get(url, **kwargs)
+            if resp.status_code == 200 and not self._is_blocked(resp):
+                return resp
+        except httpx.HTTPError:
+            pass
+
+        # 2. Через прокси (если задан)
+        if PROXY_URL:
+            try:
+                async with httpx.AsyncClient(proxy=PROXY_URL, timeout=25.0, headers=kwargs.get("headers", {}), follow_redirects=True) as proxy_client:
+                    resp = await proxy_client.get(url)
+                    if resp.status_code == 200 and not self._is_blocked(resp):
+                        return resp
+            except httpx.HTTPError:
+                pass
+
+        # 3. Через ScrapingAnt (бесплатный, 10k запросов/мес)
+        if SCRAPINGANT_API_KEY:
+            try:
+                sa_url = "https://api.scrapingant.com/v2/general?" + urllib.parse.urlencode({
+                    "url": url, "x-api-key": SCRAPINGANT_API_KEY,
+                    "browser": "false" if "ozon" not in url else "true",
+                })
+                async with httpx.AsyncClient(timeout=60.0) as sa_client:
+                    resp = await sa_client.get(sa_url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        content = data.get("content") or data.get("result") or ""
+                        # Оборачиваем в MockResponse
+                        return MockResponse(status_code=200, text=content)
+            except Exception as e:
+                logger.warning("ScrapingAnt: %s", e)
+
+        return None
+
+    @staticmethod
+    def _is_blocked(resp: httpx.Response) -> bool:
+        text = (resp.text or "").lower()
+        return any(m in text for m in ["captcha", "no connection", "js-challenge", "blocked", "unavailable"])
 
     async def search_wb(self, query: str, limit: int = 20) -> SearchResult:
         url = "https://search.wb.ru/exactmatch/ru/common/v5/search?" + urllib.parse.urlencode({
@@ -118,11 +184,17 @@ class MarketSearch:
         url = "https://www.ozon.ru/api/entrypoint/v4/search?" + urllib.parse.urlencode({
             "text": query, "page": 1,
         })
-        resp = await self._client.get(url, headers={"Accept": "application/json"})
+        resp = await self._fetch_with_antibot(url, headers={"Accept": "application/json"})
+        if resp is None:
+            return SearchResult(marketplace="ozon", ok=False,
+                                error="Ozon закрыт антиботом. Добавьте бесплатный ключ ScrapingAnt в .env (SCRAPINGANT_API_KEY)")
         if resp.status_code in (307, 403, 404) or "block" in resp.text.lower()[:200]:
             return SearchResult(marketplace="ozon", ok=False, error="Ozon закрыт антиботом (307/403)")
         resp.raise_for_status()
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError:
+            return SearchResult(marketplace="ozon", ok=False, error="Некорректный ответ Ozon")
         # Обработка, если всё же удалось получить данные
         items = data.get("items") or data.get("widgetStates") or []
         points: list[PricePoint] = []
@@ -190,9 +262,10 @@ class MarketSearch:
 
     async def search_aliexpress(self, query: str, limit: int = 20) -> SearchResult:
         url = "https://www.aliexpress.com/wholesale?" + urllib.parse.urlencode({"SearchText": query})
-        resp = await self._client.get(url)
-        if resp.status_code != 200:
-            return SearchResult(marketplace="aliexpress", ok=False, error=f"HTTP {resp.status_code}")
+        resp = await self._fetch_with_antibot(url)
+        if resp is None or resp.status_code != 200:
+            return SearchResult(marketplace="aliexpress", ok=False,
+                                error="AliExpress закрыт (антибот). Добавьте бесплатный ключ ScrapingAnt в .env")
         html = resp.text
         # AliExpress часто требует JS — цены обычно не извлекаются
         patterns = [

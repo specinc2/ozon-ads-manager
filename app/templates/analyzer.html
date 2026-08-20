@@ -35,7 +35,12 @@
                         </div>
                         <div class="col-md-4 mb-2">
                             <label class="form-label">Комиссия Ozon, %</label>
-                            <input type="number" step="0.1" class="form-control" name="commission_pct" value="{{ defaults.commission_pct }}">
+                            <select class="form-select" name="commission_pct">
+                                {% for c in defaults.commissions %}
+                                <option value="{{ c }}" {% if c == defaults.default_commission %}selected{% endif %}>{{ c }}%</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Реальные комиссии по вашим категориям (из Seller API).</small>
                         </div>
                         <div class="col-md-4 mb-2">
                             <label class="form-label">Логистика, ₽/шт</label>
