@@ -21,8 +21,10 @@ logger = logging.getLogger("market_search")
 # Прокси для обхода антибота (например, http://user:pass@host:port)
 PROXY_URL = os.getenv("PROXY_URL", "")
 # Бесплатный сервис ScrapingAnt (до 10 000 запросов/мес): https://scrapingant.com
-# Ключ вписывается в .env — тогда Ozon/AliExpress ищутся через него (обходит антибот)
 SCRAPINGANT_API_KEY = os.getenv("SCRAPINGANT_API_KEY", "")
+# ScraperAPI — 1000 запросов/мес бесплатно, без карты: https://scraperapi.com
+# Один из лучших для обхода Akamai (Ozon). Ключ в .env → Ozon/Ali ищутся через него.
+SCRAPERAPI_API_KEY = os.getenv("SCRAPERAPI_API_KEY", "")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
@@ -120,7 +122,22 @@ class MarketSearch:
             except httpx.HTTPError:
                 pass
 
-        # 3. Через ScrapingAnt (бесплатный, 10k запросов/мес)
+        # 3. Через ScraperAPI (1000 запросов/мес бесплатно) — хорошо обходит Akamai
+        if SCRAPERAPI_API_KEY:
+            try:
+                sa_url = "https://api.scraperapi.com/?" + urllib.parse.urlencode({
+                    "api_key": SCRAPERAPI_API_KEY, "url": url,
+                    "render": "true", "country_code": "ru",
+                })
+                async with httpx.AsyncClient(timeout=60.0) as sa_client:
+                    resp = await sa_client.get(sa_url)
+                    if resp.status_code == 200:
+                        # ScraperAPI отдаёт контент страницы напрямую (text/html)
+                        return MockResponse(status_code=200, text=resp.text)
+            except Exception as e:
+                logger.warning("ScraperAPI: %s", e)
+
+        # 4. Через ScrapingAnt (бесплатный, 10k запросов/мес)
         if SCRAPINGANT_API_KEY:
             try:
                 sa_url = "https://api.scrapingant.com/v2/general?" + urllib.parse.urlencode({
@@ -187,24 +204,55 @@ class MarketSearch:
         resp = await self._fetch_with_antibot(url, headers={"Accept": "application/json"})
         if resp is None:
             return SearchResult(marketplace="ozon", ok=False,
-                                error="Ozon закрыт антиботом. Добавьте бесплатный ключ ScrapingAnt в .env (SCRAPINGANT_API_KEY)")
+                                error="Ozon закрыт антиботом. Добавьте ключ ScraperAPI в .env (SCRAPERAPI_API_KEY)")
         if resp.status_code in (307, 403, 404) or "block" in resp.text.lower()[:200]:
             return SearchResult(marketplace="ozon", ok=False, error="Ozon закрыт антиботом (307/403)")
         resp.raise_for_status()
+        points: list[PricePoint] = []
+        # Пробуем распарсить JSON (если пришёл прямой ответ API)
         try:
             data = resp.json()
-        except ValueError:
-            return SearchResult(marketplace="ozon", ok=False, error="Некорректный ответ Ozon")
-        # Обработка, если всё же удалось получить данные
-        items = data.get("items") or data.get("widgetStates") or []
-        points: list[PricePoint] = []
-        for it in items:
-            if isinstance(it, dict):
-                name = it.get("title") or it.get("name") or ""
-                price_data = it.get("price") or {}
-                price = price_data.get("price") or price_data.get("value")
-                if price:
-                    points.append(PricePoint(price=float(price), name=name, marketplace="ozon"))
+            items = data.get("items") or data.get("widgetStates") or []
+            for it in items:
+                if isinstance(it, dict):
+                    name = it.get("title") or it.get("name") or ""
+                    price_data = it.get("price") or {}
+                    price = price_data.get("price") or price_data.get("value")
+                    if price:
+                        points.append(PricePoint(price=float(price), name=name, marketplace="ozon"))
+        except (ValueError, TypeError):
+            # Если не JSON — парсим HTML (ScraperAPI/ZenRows возвращают HTML страницы)
+            html = resp.text
+            # Ищем цены в data-атрибутах Ozon: data-price="..." или ts-price
+            import re
+            # Паттерны цен в HTML Ozon
+            price_patterns = [
+                r'data-price="([\d.]+)"',
+                r'"price":"([\d.]+)"',
+                r'<span[^>]*class="[^"]*price[^"]*"[^>]*>([\d\s]+)\s?₽',
+                r'<span[^>]*data-test-id="price[^"]*"[^>]*>([\d\s]+)',
+                r'([\d]{2,6})\s?₽',
+            ]
+            for pat in price_patterns:
+                for m in re.finditer(pat, html):
+                    try:
+                        raw = m.group(1).replace(" ", "").replace("\u00a0", "")
+                        price = float(raw)
+                        if 5 < price < 10_000_000:
+                            points.append(PricePoint(price=price, marketplace="ozon"))
+                    except (ValueError, IndexError):
+                        continue
+                if len(points) >= limit:
+                    break
+            # Дедупликация
+            seen = set()
+            uniq = []
+            for p in points:
+                if p.price not in seen:
+                    seen.add(p.price)
+                    uniq.append(p)
+            points = uniq[:limit]
+
         if not points:
             return SearchResult(marketplace="ozon", ok=False, error="Нет данных в ответе Ozon")
         return SearchResult(marketplace="ozon", ok=True, prices=points)
