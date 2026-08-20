@@ -83,7 +83,7 @@
             <div class="card-body">
                 {% if api_keys %}
                 <div class="list-group">
-                    {% for k in api_keys %}
+                    {% for k in key_infos %}
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <div>
                             <strong>{{ k.name }}</strong>
@@ -92,11 +92,19 @@
                             {% else %}
                             <span class="badge bg-secondary ms-1">выключен</span>
                             {% endif %}
+                            {% if k.seller_enabled %}
+                            <span class="badge bg-info text-dark ms-1">Seller API</span>
+                            {% endif %}
                             <div class="text-muted small">
-                                Client-Id: <code>{{ k.id }}</code>
+                                Client-Id: <code>{{ k.client_id_masked }}</code>
+                                · ID: {{ k.id }}
                                 {% if k.last_verified_at %}
                                 · проверен {{ k.last_verified_at.strftime('%d.%m.%Y %H:%M') }}
                                 {% endif %}
+                                {% if k.api_key_expires_at %}
+                                · истекает {{ k.api_key_expires_at.strftime('%d.%m.%Y %H:%M') }}
+                                {% endif %}
+                                <br>создан {{ k.created_at.strftime('%d.%m.%Y %H:%M') }}
                             </div>
                         </div>
                         <div class="btn-group btn-group-sm">

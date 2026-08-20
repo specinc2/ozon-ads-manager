@@ -375,10 +375,27 @@ async def settings_page(request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(ApiKey).where(ApiKey.user_id == user.id).order_by(ApiKey.created_at.desc())
     )
-    ctx["api_keys"] = list(result.scalars().all())
-    # Проверяем, подключены ли ключи Seller API
-    seller_keys = [k for k in ctx["api_keys"] if k.is_active and k.seller_client_id_enc and k.seller_api_key_enc]
-    ctx["has_seller_keys"] = bool(seller_keys)
+    api_keys = list(result.scalars().all())
+    # Подготавливаем маскированные данные для шаблона (без расшифрованных секретов)
+    from app.security import decrypt_value
+    key_infos = []
+    for k in api_keys:
+        client_id = decrypt_value(k.client_id_enc)
+        masked = (client_id[:6] + "..." + client_id[-4:]) if len(client_id) > 12 else "***"
+        seller_enabled = bool(k.seller_client_id_enc and k.seller_api_key_enc)
+        key_infos.append({
+            "id": k.id,
+            "name": k.name,
+            "is_active": k.is_active,
+            "client_id_masked": masked,
+            "last_verified_at": k.last_verified_at,
+            "api_key_expires_at": k.api_key_expires_at,
+            "seller_enabled": seller_enabled,
+            "created_at": k.created_at,
+        })
+    ctx["api_keys"] = api_keys
+    ctx["key_infos"] = key_infos
+    ctx["has_seller_keys"] = any(k["seller_enabled"] and k["is_active"] for k in key_infos)
     return templates.TemplateResponse("settings.html", ctx)
 
 
@@ -437,6 +454,7 @@ async def add_api_key(request: Request, db: AsyncSession = Depends(get_db)):
         name=name,
         client_id_enc=encrypt_value(client_id),
         client_secret_enc=encrypt_value(client_secret),
+        api_key_expires_at=test_client.api_key_expires,
         is_active=True,
     )
     db.add(api_key)
