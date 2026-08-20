@@ -129,10 +129,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
     proxy_url = proxy_setting.proxy_url if proxy_setting and proxy_setting.proxy_url else ""
     ozon_cookies: dict = {}
     if proxy_setting and proxy_setting.ozon_cookies:
-        try:
-            ozon_cookies = json_lib.loads(proxy_setting.ozon_cookies)
-        except (json_lib.JSONDecodeError, TypeError):
-            ozon_cookies = {}
+        ozon_cookies = parse_ozon_cookies(proxy_setting.ozon_cookies)
 
     searcher = MarketSearch(proxy_override=proxy_url, cookies=ozon_cookies)
     try:
@@ -220,3 +217,36 @@ def _float(value, default: float = 0.0) -> float:
         return float(value) if value not in (None, "") else default
     except (TypeError, ValueError):
         return default
+
+
+def parse_ozon_cookies(raw: str) -> dict:
+    """Парсит куки Ozon из настроек.
+
+    Поддерживает два формата:
+    1. JSON: {"__Secure-access-token": "...", "abt_data": "..."}
+    2. Cookie-строка: "name1=value1; name2=value2" (из DevTools → Network → Cookie)
+    """
+    import json as json_lib
+
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+
+    # 1. Пробуем JSON
+    try:
+        data = json_lib.loads(raw)
+        if isinstance(data, dict):
+            return {str(k): str(v) for k, v in data.items()}
+    except (json_lib.JSONDecodeError, TypeError):
+        pass
+
+    # 2. Пробуем Cookie-строку "name=value; name2=value2"
+    cookies: dict = {}
+    for part in raw.split(";"):
+        part = part.strip()
+        if "=" in part:
+            name, _, value = part.partition("=")
+            name = name.strip()
+            if name:
+                cookies[name] = value.strip()
+    return cookies

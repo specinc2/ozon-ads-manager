@@ -102,10 +102,11 @@
                         <textarea class="form-control" name="ozon_cookies" rows="3"
                                   placeholder='{"__Secure-access-token": "...", "x-o3-abt-experiments": "..."}'>{{ proxy_setting.ozon_cookies if proxy_setting and proxy_setting.ozon_cookies else '' }}</textarea>
                         <div class="form-text">
-                            Как получить: откройте <code>https://www.ozon.ru</code> в браузере (где Ozon работает),
-                            нажмите F12 → вкладка «Приложение/Application» → «Cookies» → выберите
-                            <code>https://www.ozon.ru</code> → скопируйте значения
-                            <code>__Secure-access-token</code> и <code>x-o3-abt-experiments</code> и вставьте как JSON выше.
+                            <strong>Как получить куки (1 минута):</strong><br>
+                            1. Отключите VPN и откройте <code>https://www.ozon.ru</code> в браузере — дождитесь полной загрузки (challenge решится сам).<br>
+                            2. Нажмите <strong>F12</strong> → вкладка <strong>«Сеть/Network»</strong> → обновите страницу (F5) → кликните первый запрос → вкладка <strong>«Заголовки/Headers»</strong> → найдите <strong>«Cookie»</strong> → скопируйте всю строку вида <code>abt_data=...; xcid=...</code>.<br>
+                            3. Вставьте строку в поле выше и нажмите «Сохранить прокси».<br>
+                            <span class="text-muted">Можно и JSON: <code>{"__Secure-access-token": "...", "abt_data": "..."}</code> (F12 → Application → Cookies).</span>
                         </div>
                     </div>
                     {% if proxy_setting and proxy_setting.proxy_url %}
