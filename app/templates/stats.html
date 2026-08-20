@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Статистика — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-bar-chart-line"></i> Статистика</h1>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">Кампания</label>
+                <select name="campaign_pk" class="form-select" onchange="this.form.submit()">
+                    <option value="">Все кампании</option>
+                    {% for c in campaigns %}
+                    <option value="{{ c.id }}" {% if selected_campaign == c.id %}selected{% endif %}>{{ c.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Период</label>
+                <select name="days" class="form-select" onchange="this.form.submit()">
+                    <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
+                    <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
+                    <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
+                    <option value="90" {% if days == 90 %}selected{% endif %}>90 дней</option>
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if stats %}
+<!-- Сводные метрики -->
+<div class="row mb-4">
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title text-muted">Расход</h6>
+        <h4 id="sumSpend">—</h4>
+    </div></div></div>
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title text-muted">Показы</h6>
+        <h4 id="sumViews">—</h4>
+    </div></div></div>
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title text-muted">Клики</h6>
+        <h4 id="sumClicks">—</h4>
+    </div></div></div>
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title text-muted">Заказы</h6>
+        <h4 id="sumOrders">—</h4>
+    </div></div></div>
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title text-muted">Выручка</h6>
+        <h4 id="sumRevenue">—</h4>
+    </div></div></div>
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title text-muted">ДРР</h6>
+        <h4 id="sumDrr">—</h4>
+    </div></div></div>
+</div>
+
+<!-- График -->
+<div class="card mb-4">
+    <div class="card-header"><h5 class="card-title mb-0">Динамика за период</h5></div>
+    <div class="card-body">
+        <canvas id="statChart" height="100"></canvas>
+    </div>
+</div>
+
+<!-- Таблица -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">Детальные данные по дням</h5>
+        <button class="btn btn-outline-success btn-sm" onclick="exportCSV()">
+            <i class="bi bi-filetype-csv"></i> Экспорт CSV
+        </button>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0" id="statsTable">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th class="text-end">Показы</th>
+                    <th class="text-end">Клики</th>
+                    <th class="text-end">CTR</th>
+                    <th class="text-end">Заказы</th>
+                    <th class="text-end">Выручка</th>
+                    <th class="text-end">Расход</th>
+                    <th class="text-end">CPA</th>
+                    <th class="text-end">ROMI</th>
+                </tr>
+            </thead>
+            <tbody id="statsBody"></tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="bi bi-bar-chart-steps fs-1 text-muted"></i>
+    <p class="mt-2 text-muted">Нет данных статистики за выбранный период. Нажмите «Обновить статистику» на дашборде.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_scripts %}
+<script>
+// Данные приходят построчно: для «Все кампании» суммируем по датам
+const rawStats = {{ stats_json|tojson }};
+const isAll = {{ 'true' if not selected_campaign else 'false' }};
+
+// Агрегируем по дате (если выбраны все кампании)
+const byDate = {};
+rawStats.forEach(s => {
+    if (!byDate[s.stat_date]) {
+        byDate[s.stat_date] = { stat_date: s.stat_date, impressions: 0, clicks: 0, spend: 0, orders: 0, revenue: 0 };
+    }
+    const d = byDate[s.stat_date];
+    d.impressions += s.impressions;
+    d.clicks += s.clicks;
+    d.spend += s.spend;
+    d.orders += s.orders;
+    d.revenue += s.revenue;
+});
+const stats = isAll ? Object.values(byDate).sort((a, b) => a.stat_date.localeCompare(b.stat_date)) : rawStats;
+
+// Сводные метрики
+function fmt(x) { return (x ?? 0).toLocaleString('ru-RU'); }
+const totals = stats.reduce((acc, s) => {
+    acc.spend += s.spend; acc.views += s.impressions; acc.clicks += s.clicks;
+    acc.orders += s.orders; acc.revenue += s.revenue;
+    return acc;
+}, { spend: 0, views: 0, clicks: 0, orders: 0, revenue: 0 });
+document.getElementById('sumSpend').textContent = totals.spend.toFixed(2) + ' ₽';
+document.getElementById('sumViews').textContent = fmt(totals.views);
+document.getElementById('sumClicks').textContent = fmt(totals.clicks);
+document.getElementById('sumOrders').textContent = fmt(totals.orders);
+document.getElementById('sumRevenue').textContent = totals.revenue.toFixed(2) + ' ₽';
+document.getElementById('sumDrr').textContent = totals.spend > 0 ? (totals.spend / totals.revenue * 100).toFixed(1) + '%' : '—';
+
+// График
+if (window.Chart && stats.length && document.getElementById('statChart')) {
+    new Chart(document.getElementById('statChart'), {
+        type: 'line',
+        data: {
+            labels: stats.map(s => s.stat_date),
+            datasets: [
+                { label: 'Показы', data: stats.map(s => s.impressions), borderColor: '#0d6efd', yAxisID: 'y' },
+                { label: 'Клики', data: stats.map(s => s.clicks), borderColor: '#198754', yAxisID: 'y' },
+                { label: 'Расход (₽)', data: stats.map(s => s.spend), borderColor: '#dc3545', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true, interaction: { mode: 'index', intersect: false },
+            scales: { y: { beginAtZero: true }, y1: { beginAtZero: true, position: 'right' } }
+        }
+    });
+}
+
+// Таблица
+const body = document.getElementById('statsBody');
+if (body) {
+    stats.forEach(s => {
+        const ctr = s.impressions > 0 ? (s.clicks / s.impressions * 100).toFixed(2) : '0.00';
+        const cpa = s.orders > 0 ? (s.spend / s.orders).toFixed(2) : '—';
+        const romi = s.spend > 0 ? (s.revenue / s.spend).toFixed(2) : '—';
+        body.insertAdjacentHTML('beforeend', `
+            <tr>
+                <td>${s.stat_date}</td>
+                <td class="text-end">${fmt(s.impressions)}</td>
+                <td class="text-end">${fmt(s.clicks)}</td>
+                <td class="text-end">${ctr}%</td>
+                <td class="text-end">${fmt(s.orders)}</td>
+                <td class="text-end">${s.revenue.toFixed(2)}</td>
+                <td class="text-end">${s.spend.toFixed(2)}</td>
+                <td class="text-end">${cpa}</td>
+                <td class="text-end">${romi}</td>
+            </tr>`);
+    });
+}
+
+function exportCSV() {
+    const rows = [['Дата','Показы','Клики','CTR','Заказы','Выручка','Расход','CPA','ROMI']];
+    stats.forEach(s => {
+        const ctr = s.impressions > 0 ? (s.clicks / s.impressions * 100).toFixed(2) : '0.00';
+        const cpa = s.orders > 0 ? (s.spend / s.orders).toFixed(2) : '';
+        const romi = s.spend > 0 ? (s.revenue / s.spend).toFixed(2) : '';
+        rows.push([s.stat_date, s.impressions, s.clicks, ctr, s.orders, s.revenue, s.spend, cpa, romi]);
+    });
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'statistics.csv';
+    a.click();
+}
+</script>
+{% endblock %}

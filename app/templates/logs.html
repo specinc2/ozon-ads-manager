@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Журнал — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-journal-text"></i> Журнал</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header"><h5 class="card-title mb-0">Действия</h5></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Время</th>
+                            <th>Действие</th>
+                            <th>Объект</th>
+                            <th>Источник</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in action_logs %}
+                        <tr>
+                            <td class="small text-muted">{{ log.ts.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                            <td><span class="badge bg-light text-dark">{{ log.action }}</span></td>
+                            <td class="small">{{ log.entity_name or '—' }}</td>
+                            <td>
+                                {% if log.source == 'automation' %}
+                                <span class="badge bg-info text-dark">авто</span>
+                                {% elif log.source == 'system' %}
+                                <span class="badge bg-secondary">система</span>
+                                {% else %}
+                                <span class="badge bg-success">вручную</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% if log.details %}
+                        <tr class="table-light">
+                            <td colspan="4" class="small text-muted ps-4">
+                                <code>{{ log.details|tojson }}</code>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header"><h5 class="card-title mb-0">Запросы к Ozon API</h5></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Время</th>
+                            <th>Метод</th>
+                            <th>Эндпоинт</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in api_logs %}
+                        <tr>
+                            <td class="small text-muted">{{ log.ts.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                            <td><span class="badge bg-dark">{{ log.method }}</span></td>
+                            <td class="small">{{ log.endpoint }}</td>
+                            <td>
+                                {% if log.status and log.status < 400 %}
+                                <span class="badge bg-success">{{ log.status }}</span>
+                                {% elif log.status %}
+                                <span class="badge bg-danger">{{ log.status }}</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">ошибка</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% if log.error %}
+                        <tr class="table-light">
+                            <td colspan="4" class="small text-danger ps-4">{{ log.error }}</td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

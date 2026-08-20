@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.title }} — Ozon Ads Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <a href="/campaigns" class="text-decoration-none">&larr; Назад</a>
+        <h1 class="mb-0">{{ campaign.title }}</h1>
+        <div class="mt-1">
+            {% if campaign.status == 'RUNNING' %}
+            <span class="badge bg-success">Активна</span>
+            {% elif campaign.status == 'STOPPED' %}
+            <span class="badge bg-warning text-dark">Стоп (бюджет)</span>
+            {% elif campaign.status == 'INACTIVE' %}
+            <span class="badge bg-warning text-dark">Остановлена</span>
+            {% elif campaign.status == 'PLANNED' %}
+            <span class="badge bg-info text-dark">Запланирована</span>
+            {% elif campaign.status == 'ARCHIVED' %}
+            <span class="badge bg-secondary">Архив</span>
+            {% elif campaign.status == 'FINISHED' %}
+            <span class="badge bg-secondary">Завершена</span>
+            {% else %}
+            <span class="badge bg-dark">{{ campaign.status }}</span>
+            {% endif %}
+            <span class="badge bg-info text-dark">{{ campaign.campaign_type }}</span>
+            <span class="badge bg-secondary">ID: {{ campaign.campaign_id }}</span>
+        </div>
+    </div>
+    <div class="btn-group">
+        {% if campaign.status == 'RUNNING' %}
+        <button class="btn btn-warning btn-action" data-url="/api/campaigns/{{ campaign.id }}/stop" data-method="POST">
+            <i class="bi bi-pause-fill"></i> Остановить
+        </button>
+        {% elif campaign.status == 'STOPPED' %}
+        <button class="btn btn-success btn-action" data-url="/api/campaigns/{{ campaign.id }}/start" data-method="POST">
+            <i class="bi bi-play-fill"></i> Запустить
+        </button>
+        {% endif %}
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#budgetModal">
+            <i class="bi bi-wallet2"></i> Бюджет
+        </button>
+        <button class="btn btn-outline-info" onclick="syncProducts({{ campaign.id }})">
+            <i class="bi bi-arrow-repeat"></i> Товары
+        </button>
+    </div>
+</div>
+
+<!-- Основные показатели -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title">Бюджет</h6>
+        <h4>{% if campaign.daily_budget %}{{ "%.0f"|format(campaign.daily_budget) }} ₽/день{% elif campaign.weekly_budget %}{{ "%.0f"|format(campaign.weekly_budget) }} ₽/нед{% else %}—{% endif %}</h4>
+        {% if campaign.budget_progress is not none %}
+        <div class="progress" style="height: 10px;">
+            <div class="progress-bar {% if campaign.budget_progress >= 100 %}bg-danger{% elif campaign.budget_progress >= 80 %}bg-warning{% else %}bg-success{% endif %}"
+                 style="width: {{ campaign.budget_progress }}%"></div>
+        </div>
+        <small class="text-muted">{{ "%.0f"|format(campaign.budget_progress) }}% израсходовано</small>
+        {% endif %}
+    </div></div></div>
+    <div class="col-md-3 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title">Расход (30 дней)</h6>
+        <h4>{{ "%.2f"|format(agg.spend) }} ₽</h4>
+        <small class="text-muted">Выручка: {{ "%.2f"|format(agg.revenue) }} ₽</small>
+    </div></div></div>
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title">ДРР</h6>
+        <h4>{{ "%.1f"|format(campaign.drr) if campaign.drr else '—' }}%</h4>
+        {% if campaign.drr %}<small class="text-muted">доля рекламных расходов</small>{% endif %}
+    </div></div></div>
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title">В корзину</h6>
+        <h4>{{ campaign.to_cart if campaign.to_cart else '—' }}</h4>
+        <small class="text-muted">Ср. ставка: {{ "%.2f"|format(campaign.avg_click_price) if campaign.avg_click_price else '—' }} ₽</small>
+    </div></div></div>
+    <div class="col-md-2 mb-2"><div class="card text-bg-light h-100"><div class="card-body">
+        <h6 class="card-title">Показатели (30 дней)</h6>
+        <div>Показы: {{ agg.impressions }}</div>
+        <div>Клики: {{ agg.clicks }}</div>
+        <div>CTR: {{ "%.2f"|format(agg.ctr) }}%</div>
+        <div>CPA: {{ "%.2f"|format(agg.cpa) }} ₽</div>
+        <div>ROMI: {{ "%.2f"|format(agg.romi) }}</div>
+    </div></div></div>
+</div>
+
+<!-- График динамики -->
+<div class="card mb-4">
+    <div class="card-header"><h5 class="card-title mb-0">Динамика за 30 дней</h5></div>
+    <div class="card-body">
+        <canvas id="statChart" height="120"></canvas>
+    </div>
+</div>
+
+<!-- Товары -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">Товары в кампании ({{ products|length }})</h5>
+        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkBidModal">
+            <i class="bi bi-pencil-square"></i> Массовое изменение ставок
+        </button>
+    </div>
+    <div class="card-body">
+        {% if products %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Товар</th>
+                        <th>SKU</th>
+                        <th class="text-end">Ставка</th>
+                        <th class="text-end">Показы</th>
+                        <th class="text-end">Клики</th>
+                        <th class="text-end">Заказы</th>
+                        <th class="text-end">Расход</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in products %}
+                    <tr>
+                        <td>{{ p.name }}</td>
+                        <td><code>{{ p.sku }}</code></td>
+                        <td class="text-end">
+                            <input type="number" step="0.01" min="0" class="form-control form-control-sm text-end bid-input"
+                                   style="width: 100px; display: inline-block;" value="{{ p.bid }}" data-sku="{{ p.sku }}"
+                                   data-campaign="{{ campaign.id }}">
+                        </td>
+                        <td class="text-end">{{ p.impressions }}</td>
+                        <td class="text-end">{{ p.clicks }}</td>
+                        <td class="text-end">{{ p.orders }}</td>
+                        <td class="text-end">{{ "%.2f"|format(p.spend) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveBidsBtn">
+            <i class="bi bi-check-lg"></i> Сохранить ставки
+        </button>
+        {% else %}
+        <p class="text-muted mb-0">Товары не загружены. Нажмите «Товары» для синхронизации.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Модальное окно бюджета -->
+<div class="modal fade" id="budgetModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Изменение бюджета</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="budgetForm">
+                    <div class="mb-3">
+                        <label class="form-label">Дневной бюджет (₽)</label>
+                        <input type="number" step="0.01" min="0" class="form-control" name="daily_budget"
+                               value="{{ campaign.daily_budget if campaign.daily_budget else '' }}" placeholder="не менять">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Общий бюджет (₽)</label>
+                        <input type="number" step="0.01" min="0" class="form-control" name="total_budget"
+                               value="{{ campaign.total_budget if campaign.total_budget else '' }}" placeholder="не менять">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Сохранить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно массовых ставок -->
+<div class="modal fade" id="bulkBidModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Массовое изменение ставок</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="bulkBidForm">
+                    <div class="mb-3">
+                        <label class="form-label">Действие</label>
+                        <select class="form-select" name="operation">
+                            <option value="set">Установить фиксированную ставку</option>
+                            <option value="increase_pct">Увеличить на %</option>
+                            <option value="decrease_pct">Уменьшить на %</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Значение</label>
+                        <input type="number" step="0.01" class="form-control" name="value" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Применить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+// График динамики
+(function() {
+    const stats = {{ stats_json|tojson }};
+    if (window.Chart && document.getElementById('statChart')) {
+        new Chart(document.getElementById('statChart'), {
+            type: 'line',
+            data: {
+                labels: stats.map(s => s.stat_date),
+                datasets: [
+                    { label: 'Показы', data: stats.map(s => s.impressions), borderColor: '#0d6efd', yAxisID: 'y' },
+                    { label: 'Клики', data: stats.map(s => s.clicks), borderColor: '#198754', yAxisID: 'y' },
+                    { label: 'Расход (₽)', data: stats.map(s => s.spend), borderColor: '#dc3545', yAxisID: 'y1' }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true },
+                    y1: { beginAtZero: true, position: 'right' }
+                }
+            }
+        });
+    }
+})();
+
+// Сохранение отдельных ставок
+document.getElementById('saveBidsBtn')?.addEventListener('click', async () => {
+    const campaign = {{ campaign.id }};
+    const products = [...document.querySelectorAll('.bid-input')].map(inp => ({
+        sku: inp.dataset.sku,
+        bid: parseFloat(inp.value) || 0
+    }));
+    const resp = await fetch('/api/products/bids', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_id: campaign, products })
+    });
+    const data = await resp.json();
+    alert(data.ok ? 'Ставки сохранены' : ('Ошибка: ' + (data.detail || 'неизвестная')));
+});
+
+// Изменение бюджета
+document.getElementById('budgetForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const body = {};
+    for (const [k, v] of form) {
+        if (v !== '') body[k] = parseFloat(v);
+    }
+    if (!Object.keys(body).length) return;
+    const resp = await fetch('/api/campaigns/{{ campaign.id }}/budget', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+    if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
+});
+
+// Массовое изменение ставок
+document.getElementById('bulkBidForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const op = e.target.operation.value;
+    const value = parseFloat(e.target.value.value);
+    const campaign = {{ campaign.id }};
+    const current = {{ products_json|tojson }};
+    const products = current.map(p => {
+        let bid = p.bid;
+        if (op === 'set') bid = value;
+        else if (op === 'increase_pct') bid = bid * (1 + value / 100);
+        else if (op === 'decrease_pct') bid = bid * (1 - value / 100);
+        return { sku: p.sku, bid: Math.max(0, Math.round(bid * 100) / 100) };
+    });
+    const resp = await fetch('/api/products/bids', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_id: campaign, products })
+    });
+    const data = await resp.json();
+    if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
+});
+
+// Кнопки действий (старт/стоп)
+document.querySelectorAll('.btn-action').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        this.disabled = true;
+        const resp = await fetch(this.dataset.url, { method: this.dataset.method });
+        const data = await resp.json();
+        if (data.ok) { location.reload(); } else {
+            alert('Ошибка: ' + (data.detail || 'Неизвестная ошибка'));
+            this.disabled = false;
+        }
+    });
+});
+
+async function syncProducts(campaignId) {
+    const resp = await fetch(`/api/campaigns/${campaignId}/sync`, { method: 'POST' });
+    const data = await resp.json();
+    if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
+}
+
+// Автозагрузка товаров при входе, если они ещё не загружены
+(function() {
+    const hasProducts = {{ 'true' if products else 'false' }};
+    if (!hasProducts && !localStorage.getItem('autoSynced_{{ campaign.id }}')) {
+        localStorage.setItem('autoSynced_{{ campaign.id }}', '1');
+        syncProducts({{ campaign.id }});
+    }
+})();
+</script>
+{% endblock %}

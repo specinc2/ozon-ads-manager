@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Расписания — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-clock"></i> Расписания работы кампаний</h1>
+
+<p class="text-muted">
+    Кампания будет автоматически запускаться и останавливаться в указанные дни недели и часы.
+    Проверка выполняется планировщиком каждые {{ 5 }} минут.
+</p>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="card-title mb-0">Новое расписание</h5></div>
+    <div class="card-body">
+        <form id="scheduleForm">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Кампания</label>
+                    <select class="form-select" name="campaign_id" required>
+                        <option value="">Выберите кампанию</option>
+                        {% for c in campaigns %}
+                        <option value="{{ c.id }}">{{ c.title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Дни недели</label>
+                    <div class="btn-group w-100" role="group" id="daysGroup">
+                        {% for num, label in [(1,'Пн'),(2,'Вт'),(3,'Ср'),(4,'Чт'),(5,'Пт'),(6,'Сб'),(7,'Вс')] %}
+                        <input type="checkbox" class="btn-check" id="day{{ num }}" value="{{ num }}" checked>
+                        <label class="btn btn-outline-primary btn-sm" for="day{{ num }}">{{ label }}</label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">С (время)</label>
+                    <input type="time" class="form-control" name="time_start" value="10:00" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">До</label>
+                    <input type="time" class="form-control" name="time_end" value="23:00" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Часовой пояс</label>
+                    <select class="form-select" name="timezone">
+                        <option value="Europe/Moscow" selected>Москва (Europe/Moscow)</option>
+                        <option value="Europe/Kaliningrad">Калининград</option>
+                        <option value="Europe/Samara">Самара</option>
+                        <option value="Asia/Yekaterinburg">Екатеринбург</option>
+                        <option value="Asia/Novosibirsk">Новосибирск</option>
+                        <option value="Asia/Vladivostok">Владивосток</option>
+                        <option value="UTC">UTC</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-lg"></i> Создать расписание
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if schedules %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Кампания</th>
+                <th>Дни</th>
+                <th>Время</th>
+                <th>Часовой пояс</th>
+                <th>Статус</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in schedules %}
+            <tr>
+                <td>{{ s.campaign_id }}</td>
+                <td>{{ s.days_of_week }}</td>
+                <td>{{ s.time_start }} – {{ s.time_end }}</td>
+                <td>{{ s.timezone }}</td>
+                <td>
+                    <span class="badge {% if s.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                        {{ 'Активно' if s.is_active else 'Выключено' }}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning" onclick="toggleSchedule({{ s.id }})">
+                        <i class="bi bi-toggle-on"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteSchedule({{ s.id }})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="bi bi-clock-history fs-1 text-muted"></i>
+    <p class="mt-2 text-muted">Расписаний пока нет.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_scripts %}
+<script>
+document.getElementById('scheduleForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const days = [...document.querySelectorAll('#daysGroup input:checked')].map(i => i.value).join(',');
+    const body = {
+        campaign_id: parseInt(form.campaign_id.value),
+        days_of_week: days,
+        time_start: form.time_start.value,
+        time_end: form.time_end.value,
+        timezone: form.timezone.value
+    };
+    const resp = await fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+    if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
+});
+
+async function toggleSchedule(id) {
+    const resp = await fetch(`/api/schedules/${id}/toggle`, { method: 'PUT' });
+    const data = await resp.json();
+    if (data.ok) location.reload();
+}
+
+async function deleteSchedule(id) {
+    if (!confirm('Удалить расписание?')) return;
+    const resp = await fetch(`/api/schedules/${id}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.ok) location.reload();
+}
+</script>
+{% endblock %}

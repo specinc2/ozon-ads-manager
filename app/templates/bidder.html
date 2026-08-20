@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}Бидер — управление ставками — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-cpu"></i> Бидер — управление ставками</h1>
+
+<p class="text-muted">
+    Автоматическое управление ставками рекламных товаров по заданным стратегиям.
+    Правила применяются планировщиком каждые 5 минут. Сработавшие изменения
+    фиксируются в журнале.
+</p>
+
+<div class="row">
+    <div class="col-md-5">
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="card-title mb-0">Новое правило</h5></div>
+            <div class="card-body">
+                <form id="bidderRuleForm">
+                    <div class="mb-3">
+                        <label class="form-label">Название</label>
+                        <input type="text" class="form-control" name="name" required placeholder="Например: Ставки по ДРР">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Стратегия</label>
+                        <select class="form-select" name="strategy" id="strategySelect" required>
+                            <option value="target_drr">Целевая ДРР от оборота</option>
+                            <option value="maintain_position">Поддержание позиции в выдаче</option>
+                            <option value="ai_test">ИИ-подбор ставки (тест)</option>
+                        </select>
+                        <div class="form-text" id="strategyDesc">
+                            <strong>Целевая ДРР:</strong> ставка подбирается так, чтобы рекламный расход
+                            не превышал заданный % от всего оборота артикула (реклама + органика).
+                            Нужно указать месячный оборот по артикулу в карточке товара.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Товар (SKU, необязательно)</label>
+                        <input type="text" class="form-control" name="sku" placeholder="Оставьте пустым для всех товаров">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Кампания (необязательно)</label>
+                        <select class="form-select" name="campaign_id">
+                            <option value="">Все кампании</option>
+                            {% for c in campaigns %}
+                            <option value="{{ c.id }}">{{ c.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Параметры target_drr -->
+                    <div class="bidder-params" id="params_target_drr">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Целевая ДРР, %</label>
+                                <input type="number" step="1" class="form-control" name="target_drr" value="10">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Шаг, %</label>
+                                <input type="number" step="1" class="form-control" name="step_pct" value="10">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Период анализа, дней</label>
+                                <input type="number" class="form-control" name="lookback_days" value="7">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Мин. ставка</label>
+                                <input type="number" step="0.1" class="form-control" name="min_bid" value="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Макс. ставка</label>
+                                <input type="number" step="0.1" class="form-control" name="max_bid" value="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Параметры maintain_position -->
+                    <div class="bidder-params d-none" id="params_maintain_position">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Позиция</label>
+                                <select class="form-select" name="position">
+                                    <option value="3">Топ-3</option>
+                                    <option value="10" selected>Топ-10</option>
+                                    <option value="20">Топ-20</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Множитель к порогу</label>
+                                <input type="number" step="0.01" class="form-control" name="multiplier" value="1.05">
+                                <small class="text-muted">1.05 = +5% к конкурентной ставке</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Мин. ставка</label>
+                                <input type="number" step="0.1" class="form-control" name="min_bid" value="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Макс. ставка</label>
+                                <input type="number" step="0.1" class="form-control" name="max_bid" value="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Параметры ai_test -->
+                    <div class="bidder-params d-none" id="params_ai_test">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Стартовая ставка</label>
+                                <input type="number" step="0.1" class="form-control" name="start_bid" value="30">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Шаг, %</label>
+                                <input type="number" step="1" class="form-control" name="step_pct" value="20">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Целевая ДРР, %</label>
+                                <input type="number" step="1" class="form-control" name="target_drr" value="10">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Мин. CTR, %</label>
+                                <input type="number" step="0.1" class="form-control" name="min_ctr" value="0.5">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Период теста, дней</label>
+                                <input type="number" class="form-control" name="lookback_days" value="3">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Мин. ставка</label>
+                                <input type="number" step="0.1" class="form-control" name="min_bid" value="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Макс. ставка</label>
+                                <input type="number" step="0.1" class="form-control" name="max_bid" value="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary mt-3 w-100">
+                        <i class="bi bi-plus-lg"></i> Создать правило
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header"><h5 class="card-title mb-0">Активные правила</h5></div>
+            <div class="card-body">
+                {% if rules %}
+                <div class="list-group">
+                    {% for r in rules %}
+                    <div class="list-group-item d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>{{ r.name }}</strong>
+                            {% if r.is_active %}<span class="badge bg-success ms-1">активно</span>
+                            {% else %}<span class="badge bg-secondary ms-1">выключено</span>{% endif %}
+                            <div class="text-muted small">
+                                Стратегия:
+                                {% if r.strategy == 'target_drr' %}Целевая ДРР
+                                {% elif r.strategy == 'maintain_position' %}Поддержание позиции
+                                {% else %}ИИ-подбор{% endif %}
+                                · SKU: {{ r.sku or 'все' }}
+                                · Кампания: {{ r.campaign_id or 'все' }}
+                                {% if r.last_triggered_at %}· сработало {{ r.last_triggered_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}
+                            </div>
+                            {% if r.params %}
+                            <code class="small">{{ r.params|tojson }}</code>
+                            {% endif %}
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-warning" onclick="toggleBidderRule({{ r.id }})">
+                                <i class="bi bi-toggle-on"></i>
+                            </button>
+                            <button class="btn btn-outline-danger" onclick="deleteBidderRule({{ r.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Правил бидера пока нет. Создайте первое правило слева.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+// Переключение описания стратегии
+const strategyDesc = {
+    target_drr: '<strong>Целевая ДРР:</strong> ставка подбирается так, чтобы рекламный расход не превышал заданный % от всего оборота артикула (реклама + органика). Нужно указать месячный оборот по артикулу в карточке товара.',
+    maintain_position: '<strong>Поддержание позиции:</strong> через конкурентные ставки API узнаём, сколько ставят конкуренты для попадания в топ-3/топ-10, и держим свою ставку чуть выше порога, не тратя лишнего.',
+    ai_test: '<strong>ИИ-подбор:</strong> начинаем с нижней ставки, шагами повышаем, анализируем CTR и ДРР за период теста, останавливаемся при достижении цели или снижении CTR.',
+};
+
+document.getElementById('strategySelect')?.addEventListener('change', function() {
+    document.querySelectorAll('.bidder-params').forEach(el => el.classList.add('d-none'));
+    const params = document.getElementById('params_' + this.value);
+    if (params) params.classList.remove('d-none');
+    const desc = document.getElementById('strategyDesc');
+    if (desc) desc.innerHTML = strategyDesc[this.value] || '';
+});
+
+// Создание правила
+document.getElementById('bidderRuleForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const strategy = form.strategy.value;
+    const params = {};
+    const fields = form.querySelectorAll(`#params_${strategy} input, #params_${strategy} select`);
+    fields.forEach(f => {
+        const val = f.name === 'min_bid' || f.name === 'max_bid' || f.name === 'start_bid' || f.name === 'step_pct' || f.name === 'target_drr' || f.name === 'min_ctr' || f.name === 'multiplier' || f.name === 'position' || f.name === 'lookback_days'
+            ? parseFloat(f.value) || 0 : f.value;
+        params[f.name] = f.name === 'position' ? parseInt(val) || 10 : val;
+    });
+    const body = {
+        name: form.name.value,
+        strategy,
+        sku: form.sku.value.trim(),
+        campaign_id: form.campaign_id.value ? parseInt(form.campaign_id.value) : null,
+        params,
+        is_active: true,
+    };
+    const resp = await fetch('/api/bidder/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
+});
+
+async function toggleBidderRule(id) {
+    const resp = await fetch(`/api/bidder/rules/${id}/toggle`, { method: 'PUT' });
+    const data = await resp.json();
+    if (data.ok) location.reload();
+}
+
+async function deleteBidderRule(id) {
+    if (!confirm('Удалить правило бидера?')) return;
+    const resp = await fetch(`/api/bidder/rules/${id}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.ok) location.reload();
+}
+</script>
+{% endblock %}

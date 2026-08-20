@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}FAQ — как пользоваться — Ozon Ads Manager{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        <h1 class="mb-1"><i class="bi bi-question-circle"></i> Как пользоваться приложением</h1>
+        <p class="text-muted mb-4">
+            Ozon Ads Manager — инструмент для управления рекламой Ozon (Performance API)
+            и контроля экономики товаров. Ниже — пошаговые инструкции по всем разделам.
+        </p>
+
+        {% if not user %}
+        <div class="alert alert-primary">
+            <i class="bi bi-info-circle"></i>
+            Сейчас вы смотрите страницу как гость. Чтобы начать работу, пройдите
+            <a href="/register" class="alert-link">регистрацию</a> — это займёт минуту.
+        </div>
+        {% endif %}
+
+        <!-- Начало работы -->
+        <div class="accordion mb-4" id="faqAccordion">
+
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                        🚀 Начало работы: регистрация и подключение ключей
+                    </button>
+                </h2>
+                <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">
+                        <ol>
+                            <li><strong>Зарегистрируйтесь</strong> — нажмите «Зарегистрироваться» и создайте логин, email и пароль.</li>
+                            <li><strong>Добавьте ключи Performance API</strong> (раздел «Настройки»):
+                                <ul>
+                                    <li>Client-Id и Client-Secret берутся из <a href="https://seller.ozon.ru/app/settings/api-keys" target="_blank">ЛК Ozon → Настройки → API-ключи</a> (вкладка «Performance API»).</li>
+                                    <li>Ключи проверяются автоматически при добавлении — если всё верно, появится «добавлены и проверены».</li>
+                                </ul>
+                            </li>
+                            <li><strong>Подключите Seller API</strong> (тот же раздел «Настройки») — Client-Id и Api-Key из той же страницы ЛК, вкладка «Seller API». Это нужно, чтобы автоматически подтягивать остатки, цены, комиссии и оборот товаров.</li>
+                            <li>Готово! Переходите к «Кампаниям».</li>
+                        </ol>
+                        <div class="alert alert-warning py-2 small mb-0">
+                            Все ключи хранятся в зашифрованном виде в базе данных и не выводятся в интерфейсе.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Кампании -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                        📢 Кампании: синхронизация, управление, бюджеты
+                    </button>
+                </h2>
+                <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">
+                        <h6>Первая загрузка</h6>
+                        <p>Нажмите кнопку <strong>«Синхронизировать»</strong> — список ваших рекламных кампаний Ozon загрузится в таблицу. Статусы и типы обновляются автоматически каждые 5 минут.</p>
+                        <h6>Что видно в списке</h6>
+                        <ul>
+                            <li><strong>Бюджет</strong> — дневной (₽/день) или недельный (₽/нед), в зависимости от настройки кампании.</li>
+                            <li><strong>Расход</strong> — суммарный расход за период.</li>
+                            <li><strong>ДРР</strong> — доля рекламных расходов от оборота: зелёный &lt; 5%, жёлтый 5–10%, красный &gt; 10%.</li>
+                            <li><strong>Корзина</strong> — сколько раз товары добавили в корзину.</li>
+                            <li><strong>Прогресс</strong> — сколько % бюджета израсходовано (полоса краснеет при &gt; 80%).</li>
+                            <li><strong>Товары</strong> — сколько товаров загружено; «не загружены» — нажмите кнопку <strong>«Загрузить товары всех кампаний»</strong>.</li>
+                        </ul>
+                        <h6>Управление</h6>
+                        <ul>
+                            <li>Кнопки ▶/⏸ запускают и останавливают кампанию.</li>
+                            <li>В карточке кампании (клик по названию) — изменение дневного/недельного бюджета, ставки товаров (по одному и массово), график динамики.</li>
+                        </ul>
+                        <div class="alert alert-info py-2 small mb-0">
+                            Кнопка «Загрузить товары всех кампаний» проходит по всем кампаниям с прогресс-баром — при первом входе запускается автоматически.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Товары -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                        📦 Товары: маржа, экономика, себестоимость
+                    </button>
+                </h2>
+                <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">
+                        <p>Раздел <strong>«Товары»</strong> — сводная экономика по каждому артикулу из ваших рекламных кампаний.</p>
+                        <h6>Что подтягивается из ЛК автоматически (Seller API)</h6>
+                        <ul>
+                            <li>Цена продажи, комиссия маркетплейса %, логистика ₽/шт, эквайринг %.</li>
+                            <li>Остатки на складах, участие в акции (со скидкой).</li>
+                            <li>Заказы и выручка за месяц — весь оборот артикула.</li>
+                        </ul>
+                        <h6>Что нужно заполнить вручную</h6>
+                        <ul>
+                            <li><strong>Себестоимость</strong> — единственное поле, которого нет в API Ozon. Введите её в столбце «Себестоимость» и нажмите галочку ✓ для сохранения.</li>
+                            <li><strong>% выкупа</strong> — метрика выкупов сейчас недоступна в Seller API (помечена устаревшей), поэтому вводится вручную в модальном окне «⚙» при необходимости.</li>
+                        </ul>
+                        <h6>Рассчитывается автоматически</h6>
+                        <ul>
+                            <li><strong>Маржа/шт</strong> — цена минус себестоимость, комиссия, логистика, эквайринг.</li>
+                            <li><strong>Маржа с выкупом</strong> — с учётом % выкупа (возвраты съедают прибыль).</li>
+                            <li><strong>Лимит рекламы/шт</strong> — сколько ₽ рекламы допустимо на 1 продажу, чтобы сохранить минимальную маржу.</li>
+                            <li><strong>ДРР от оборота</strong> — рекламный расход / (рекламная выручка + органический оборот).</li>
+                            <li><strong>«Мало показов»</strong> — товары с посещаемостью менее 100 показов и 5 заказов подсвечиваются жёлтым.</li>
+                        </ul>
+                        <div class="alert alert-warning py-2 small mb-0">
+                            Чтобы ДРР от оборота и лимит рекламы считались корректно, у товара должны быть заполнены цена и месячная выручка (автоматически из ЛК).
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Бидер -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+                        🤖 Бидер: автоматическое управление ставками
+                    </button>
+                </h2>
+                <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">
+                        <p>Раздел <strong>«Бидер»</strong> — правила, которые сами меняют рекламные ставки товаров. Правила выполняются каждые 5 минут; каждое изменение фиксируется в журнале с причиной.</p>
+                        <h6>Стратегия «Целевая ДРР от оборота»</h6>
+                        <p>Задаёте целевую ДРР (например 10%). Если реклама тратит больше 10% от всего оборота артикула — ставка снижается; если расход меньше половины цели и маржа позволяет — ставка повышается. <strong>Требование:</strong> у товара заполнена месячная выручка (из ЛК).</p>
+                        <h6>Стратегия «Поддержание позиции»</h6>
+                        <p>Через API конкурентных ставок Ozon узнаём, сколько ставят конкуренты, и держим свою ставку чуть выше порога целевой позиции (топ-3, топ-10, топ-20) с множителем 1.05 (+5%). Работает для кампаний «Оплата за клик».</p>
+                        <h6>Стратегия «ИИ-подбор»</h6>
+                        <p>Имитирует ручной подбор: начинаем с нижней ставки, шагами повышаем, анализируем CTR и ДРР за период теста, останавливаемся при достижении цели или падении CTR ниже минимума. Полезно для поиска ставки «вслепую».</p>
+                        <h6>Рекомендации по использованию</h6>
+                        <ul>
+                            <li>Сначала укажите себестоимость и проверьте маржу в «Товарах» — бидер работает поверх экономики.</li>
+                            <li>Ставьте ограничения min/max ставки, чтобы не уйти в крайности.</li>
+                            <li>Запускайте правило на 1–2 товарах, смотрите журнал, потом расширяйте.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Статистика -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq5">
+                        📊 Статистика и дашборд
+                    </button>
+                </h2>
+                <div id="faq5" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">
+                        <h6>Дашборд (главная страница)</h6>
+                        <ul>
+                            <li>Расход, заказы, CPA и ROMI за неделю.</li>
+                            <li>Статусы кампаний (сколько активных, остановленных и т.д.).</li>
+                            <li>Показатели за месяц и непрочитанные уведомления.</li>
+                            <li>Кнопка <strong>«Обновить статистику»</strong> — принудительный сбор данных из Ozon.</li>
+                        </ul>
+                        <h6>Статистика</h6>
+                        <ul>
+                            <li>Выберите кампанию (или «Все кампании») и период: 7 / 14 / 30 / 90 дней.</li>
+                            <li>Сводные карточки: расход, показы, клики, заказы, выручка, ДРР.</li>
+                            <li>График динамики по дням + детальная таблица.</li>
+                            <li>Кнопка <strong>«Экспорт CSV»</strong> — выгрузка таблицы в Excel/Google Таблицы.</li>
+                        </ul>
+                        <div class="alert alert-info py-2 small mb-0">
+                            При выборе «Все кампании» динамика суммируется по датам — удобно смотреть общую картину.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Авто-правила и расписания -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq6">
+                        ⏰ Авто-правила и расписания
+                    </button>
+                </h2>
+                <div id="faq6" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">
+                        <h6>Авто-правила (раздел «Авто-правила»)</h6>
+                        <ul>
+                            <li><strong>Стоп по бюджету</strong> — кампания останавливается при 100% расхода дневного/недельного бюджета (предотвращает перерасход).</li>
+                            <li><strong>Уведомление по бюджету</strong> — оповещение при достижении порога (например 90%), без остановки.</li>
+                            <li><strong>Авто-ставки</strong> — если CTR ниже X% — снизить ставку на Y%, и т.п. (для отдельных товаров или всех).</li>
+                        </ul>
+                        <h6>Расписания (раздел «Расписания»)</h6>
+                        <p>Кампания автоматически запускается и останавливается в заданные дни недели и часы (с часовым поясом). Пример: активна только по будням с 10:00 до 23:00.</p>
+                        <div class="alert alert-warning py-2 small mb-0">
+                            Автоматика выполняется каждые 5 минут — действие может произойти с задержкой до 5 минут.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Журнал и уведомления -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq7">
+                        📋 Журнал, уведомления и безопасность
+                    </button>
+                </h2>
+                <div id="faq7" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">
+                        <h6>Журнал</h6>
+                        <ul>
+                            <li><strong>Действия</strong> — кто и когда запустил/остановил кампанию, какие авто-правила и бидер сработали, изменения ставок и бюджетов (с параметрами).</li>
+                            <li><strong>Запросы к Ozon API</strong> — отладочная информация: эндпоинт, метод, статус, ошибка. Секреты не логируются.</li>
+                        </ul>
+                        <h6>Уведомления</h6>
+                        <p>В интерфейсе (колокольчик на дашборде) — достижение бюджета, срабатывание правил, ошибки API. Отмечаются прочитанными автоматически.</p>
+                        <h6>Безопасность</h6>
+                        <ul>
+                            <li>Пароли хранятся в виде хеша (PBKDF2).</li>
+                            <li>Ключи Ozon шифруются (Fernet) и не выводятся на экран.</li>
+                            <li>Сессия — подписанная HttpOnly-cookie.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Частые проблемы -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq8">
+                        ⚠️ Частые проблемы и решения
+                    </button>
+                </h2>
+                <div id="faq8" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">
+                        <h6>«Ключи не прошли проверку»</h6>
+                        <ul>
+                            <li>Проверьте, что Client-Id и Client-Secret скопированы целиком, без пробелов.</li>
+                            <li>Убедитесь, что ключ относится к Performance API (не Seller API).</li>
+                            <li>Ключи в ЛК Ozon могли быть перевыпущены — создайте новые.</li>
+                        </ul>
+                        <h6>Кампаний нет после синхронизации</h6>
+                        <ul>
+                            <li>Ключ может относиться к другому аккаунту/сервисному аккаунту.</li>
+                            <li>Проверьте в ЛК Ozon, что рекламные кампании существуют.</li>
+                        </ul>
+                        <h6>«Товары не загружены»</h6>
+                        <p>Нажмите «Загрузить товары всех кампаний» или откройте карточку кампании — товары подтянутся. У некоторых типов кампаний (блогеры, ВК) товаров нет по своей природе — это нормально.</p>
+                        <h6>Не видно ДРР и корзины</h6>
+                        <p>Эти метрики приходят из сводного отчёта Ozon для кампаний «Оплата за клик». Нажмите «Обновить статистику» на дашборде.</p>
+                        <h6>Нужно больше кампаний (лимит)</h6>
+                        <p>По умолчанию синхронизируется до 100 кампаний — этого достаточно для большинства аккаунтов.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        {% if not user %}
+        <div class="text-center">
+            <a href="/register" class="btn btn-success btn-lg me-2">
+                <i class="bi bi-person-plus"></i> Зарегистрироваться
+            </a>
+            <a href="/login" class="btn btn-outline-primary btn-lg">
+                <i class="bi bi-box-arrow-in-right"></i> Войти
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

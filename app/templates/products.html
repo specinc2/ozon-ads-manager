@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}Товары — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-box-seam"></i> Товары</h1>
+
+<p class="text-muted">
+    Здесь видна экономика каждого товара: маржа с учётом себестоимости, комиссии,
+    логистики, эквайринга и % выкупа, а также влияние рекламы (ДРР от всего оборота).
+    Комиссия, логистика, эквайринг, остатки, % выкупа и акции подтягиваются
+    автоматически из ЛК Ozon (Seller API). Укажите только себестоимость.
+</p>
+
+<div class="card mb-4">
+    <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+            {% if has_seller_keys %}
+            <span class="badge bg-success"><i class="bi bi-check-circle"></i> Seller API подключён</span>
+            <span class="text-muted ms-2">Остатки, цены, комиссии и акции обновляются автоматически</span>
+            {% else %}
+            <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle"></i> Seller API не подключён</span>
+            <span class="text-muted ms-2">
+                Подключите ключи в <a href="/settings">Настройках</a>, чтобы автоматически получать
+                комиссии, логистику, остатки и % выкупа
+            </span>
+            {% endif %}
+        </div>
+        <button class="btn btn-primary" id="syncSellerBtn" {% if not has_seller_keys %}disabled{% endif %}>
+            <i class="bi bi-arrow-repeat"></i> Синхронизировать из ЛК
+        </button>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle" id="productsTable">
+        <thead>
+            <tr>
+                <th>Товар</th>
+                <th class="text-end">Цена</th>
+                <th class="text-end">Себестоимость</th>
+                <th class="text-end">Остатки</th>
+                <th>Поставка</th>
+                <th class="text-end">% выкупа</th>
+                <th class="text-end">Маржа/шт</th>
+                <th class="text-end">Маржа с выкупом</th>
+                <th class="text-end">Маржин., %</th>
+                <th class="text-end">Лимит рекламы/шт</th>
+                <th>Акция</th>
+                <th class="text-end">Показы</th>
+                <th class="text-end">Расход (рекл.)</th>
+                <th class="text-end">ДРР от оборота</th>
+                <th class="text-end">Рекл. заказы</th>
+                <th>Посещаемость</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in cards %}
+            <tr class="{% if c.econ.low_traffic %}table-warning{% endif %}">
+                <td>
+                    <div class="fw-semibold">{{ c.product.name or c.product.sku }}</div>
+                    <small class="text-muted">SKU: {{ c.product.sku }} · кампания: {{ c.campaign_title }}</small>
+                </td>
+                <td class="text-end">
+                    <input type="number" step="0.01" class="form-control form-control-sm text-end prod-price" style="width: 90px;"
+                           value="{{ c.econ.price if c.econ.price else '' }}" data-sku="{{ c.product.sku }}">
+                </td>
+                <td class="text-end">
+                    <input type="number" step="0.01" class="form-control form-control-sm text-end prod-cost" style="width: 90px;"
+                           value="{{ c.econ.cost_price if c.econ.cost_price else '' }}" data-sku="{{ c.product.sku }}">
+                </td>
+                <td class="text-end">
+                    <input type="number" step="1" class="form-control form-control-sm text-end prod-leftovers" style="width: 80px;"
+                           value="{{ c.econ.leftovers if c.econ.leftovers else '' }}" data-sku="{{ c.product.sku }}">
+                </td>
+                <td>
+                    <select class="form-select form-select-sm prod-fbo" data-sku="{{ c.product.sku }}">
+                        <option value="FBO" {% if c.econ.fulfillment_type == 'FBO' %}selected{% endif %}>FBO</option>
+                        <option value="FBS" {% if c.econ.fulfillment_type == 'FBS' %}selected{% endif %}>FBS</option>
+                    </select>
+                </td>
+                <td class="text-end">
+                    <input type="number" step="0.1" class="form-control form-control-sm text-end prod-buyout" style="width: 80px;"
+                           value="{{ c.econ.buyout_pct if c.econ.buyout_pct and c.econ.buyout_pct != 100 else '' }}" data-sku="{{ c.product.sku }}">
+                </td>
+                <td class="text-end">
+                    {% if c.econ.price %}
+                    <span class="{% if c.econ.margin_per_unit < 0 %}text-danger{% else %}text-success{% endif %}">
+                        {{ "%.2f"|format(c.econ.margin_per_unit) }} ₽
+                    </span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="text-end">
+                    {% if c.econ.price %}
+                    <span class="{% if c.econ.margin_per_ordered < 0 %}text-danger{% else %}text-success{% endif %}">
+                        {{ "%.2f"|format(c.econ.margin_per_ordered) }} ₽
+                    </span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="text-end">
+                    {% if c.econ.price %}
+                    <span class="{% if c.econ.margin_pct_of_ordered < c.econ.min_margin_pct %}text-danger{% elif c.econ.margin_pct_of_ordered < c.econ.min_margin_pct * 1.5 %}text-warning{% else %}text-success{% endif %}">
+                        {{ "%.1f"|format(c.econ.margin_pct_of_ordered) }}%
+                    </span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="text-end">
+                    {% if c.econ.price and c.econ.breakeven_spend_per_unit > 0 %}
+                    <span class="badge bg-info text-dark">{{ "%.2f"|format(c.econ.breakeven_spend_per_unit) }} ₽</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td>
+                    <div class="form-check form-switch">
+                        <input type="checkbox" class="form-check-input prod-promo" data-sku="{{ c.product.sku }}"
+                               {% if c.econ.in_promotion %}checked{% endif %}>
+                    </div>
+                    {% if c.econ.in_promotion and c.econ.promotion_discount_pct %}
+                    <small class="text-danger">-{{ "%.0f"|format(c.econ.promotion_discount_pct) }}%</small>
+                    {% endif %}
+                </td>
+                <td class="text-end">{{ c.impressions }}</td>
+                <td class="text-end">{{ "%.2f"|format(c.econ.ad_spend) }} ₽</td>
+                <td class="text-end">
+                    {% if c.econ.total_revenue > 0 %}
+                    <span class="{% if c.econ.drr_of_total > 20 %}text-danger{% elif c.econ.drr_of_total > 10 %}text-warning{% else %}text-success{% endif %}">
+                        {{ "%.1f"|format(c.econ.drr_of_total) }}%
+                    </span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="text-end">{{ c.econ.ad_orders }}</td>
+                <td>
+                    {% if c.econ.low_traffic %}
+                    <span class="badge bg-warning text-dark">мало показов</span>
+                    {% else %}
+                    <span class="badge bg-success">норм.</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary btn-save-prod" data-sku="{{ c.product.sku }}">
+                            <i class="bi bi-check-lg"></i>
+                        </button>
+                        <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#detailsModal"
+                                data-sku="{{ c.product.sku }}" data-name="{{ c.product.name or c.product.sku }}"
+                                onclick="openDetails(this)">
+                            <i class="bi bi-sliders"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if not cards %}
+<div class="text-center py-5">
+    <i class="bi bi-box-seam fs-1 text-muted"></i>
+    <p class="mt-2 text-muted">Нет товаров. Загрузите товары кампаний на странице «Кампании».</p>
+</div>
+{% endif %}
+
+<!-- Модальное окно: подробная экономика -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailsTitle">Экономика товара</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailsBody">
+                <div class="text-center">
+                    <div class="spinner-border"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+// Сохранение экономики товара (одна строка)
+async function saveProduct(sku) {
+    const row = document.querySelector(`.prod-price[data-sku="${sku}"]`).closest('tr');
+    const body = {
+        sku,
+        price: parseFloat(row.querySelector('.prod-price').value) || 0,
+        cost_price: parseFloat(row.querySelector('.prod-cost').value) || 0,
+        leftovers: parseInt(row.querySelector('.prod-leftovers').value) || 0,
+        fulfillment_type: row.querySelector('.prod-fbo').value,
+        buyout_pct: parseFloat(row.querySelector('.prod-buyout').value) || 100,
+        in_promotion: row.querySelector('.prod-promo').checked,
+        promotion_discount_pct: parseFloat(document.querySelector('#detailsBody .promo-discount')?.value) || 0,
+    };
+    const resp = await fetch('/api/products/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
+}
+
+document.querySelectorAll('.btn-save-prod').forEach(btn => {
+    btn.addEventListener('click', () => saveProduct(btn.dataset.sku));
+});
+
+// Синхронизация из ЛК (Seller API)
+document.getElementById('syncSellerBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('syncSellerBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Синхронизация…';
+    const resp = await fetch('/api/seller/sync', { method: 'POST' });
+    const data = await resp.json();
+    if (data.ok) {
+        alert(`Готово! Обновлено товаров: ${data.updated}. Остатки у ${data.with_stock}, комиссии у ${data.with_commission}.`);
+        location.reload();
+    } else {
+        alert('Ошибка: ' + (data.detail || 'неизвестная'));
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Синхронизировать из ЛК';
+    }
+});
+
+// Подробная экономика товара
+async function openDetails(btn) {
+    const sku = btn.dataset.sku;
+    const name = btn.dataset.name;
+    document.getElementById('detailsTitle').textContent = name + ' (SKU ' + sku + ')';
+    const resp = await fetch(`/api/products/info?sku=${encodeURIComponent(sku)}`);
+    const data = await resp.json();
+    const e = data.econ || {};
+    document.getElementById('detailsBody').innerHTML = `
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Комиссия, %</label>
+                <input type="number" step="0.1" class="form-control promo-commission" value="${e.commission_pct || 0}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Логистика, ₽/шт</label>
+                <input type="number" step="0.1" class="form-control promo-logistics" value="${e.logistics_cost || 0}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Эквайринг, %</label>
+                <input type="number" step="0.1" class="form-control promo-acquiring" value="${e.acquiring_pct || 0}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Скидка акции, %</label>
+                <input type="number" step="0.1" class="form-control promo-discount" value="${e.promotion_discount_pct || 0}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Заказов за месяц (всего)</label>
+                <input type="number" class="form-control promo-orders" value="${e.monthly_orders || 0}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Выручка за месяц, ₽ (весь оборот)</label>
+                <input type="number" step="0.01" class="form-control promo-revenue" value="${e.monthly_revenue || 0}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Мин. маржа, %</label>
+                <input type="number" step="0.1" class="form-control promo-min-margin" value="${e.min_margin_pct || 10}">
+            </div>
+        </div>
+        <button class="btn btn-primary mt-3" onclick="saveDetails('${sku}')">Сохранить</button>
+    `;
+}
+
+async function saveDetails(sku) {
+    const body = {
+        sku,
+        commission_pct: parseFloat(document.querySelector('.promo-commission').value) || 0,
+        logistics_cost: parseFloat(document.querySelector('.promo-logistics').value) || 0,
+        acquiring_pct: parseFloat(document.querySelector('.promo-acquiring').value) || 0,
+        promotion_discount_pct: parseFloat(document.querySelector('.promo-discount').value) || 0,
+        monthly_orders: parseInt(document.querySelector('.promo-orders').value) || 0,
+        monthly_revenue: parseFloat(document.querySelector('.promo-revenue').value) || 0,
+        min_margin_pct: parseFloat(document.querySelector('.promo-min-margin').value) || 10,
+    };
+    const resp = await fetch('/api/products/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
+}
+</script>
+{% endblock %}

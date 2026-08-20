@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — Ozon Ads Manager{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <h1><i class="bi bi-speedometer2"></i> Дашборд</h1>
+    <div>
+        <form method="POST" action="/api/stats/collect" class="d-inline" id="collectStatsForm">
+            <button type="submit" class="btn btn-outline-primary btn-sm" onclick="return confirm('Обновить статистику?')">
+                <i class="bi bi-arrow-repeat"></i> Обновить статистику
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Общие показатели -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card text-bg-primary h-100">
+            <div class="card-body">
+                <h6 class="card-title">Расход (неделя)</h6>
+                <h3>{{ "%.2f"|format(week_stats.spend) }} ₽</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-bg-success h-100">
+            <div class="card-body">
+                <h6 class="card-title">Заказы (неделя)</h6>
+                <h3>{{ week_stats.orders }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-bg-warning h-100">
+            <div class="card-body">
+                <h6 class="card-title">CPA (неделя)</h6>
+                <h3>{{ "%.2f"|format(week_stats.cpa) }} ₽</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-bg-info h-100">
+            <div class="card-body">
+                <h6 class="card-title">ROMI (неделя)</h6>
+                <h3>{{ "%.2f"|format(week_stats.romi) }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Статусы кампаний</h5>
+            </div>
+            <div class="card-body">
+                {% if status_counts %}
+                <div class="row text-center">
+                    {% for status, count in status_counts.items() %}
+                    <div class="col-4">
+                        <strong>{{ status }}</strong><br>
+                        <span class="fs-3">{{ count }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Нет данных. <a href="/campaigns?sync=1">Синхронизировать кампании</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Показатели за месяц</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless">
+                    <tr>
+                        <td>Показы</td>
+                        <td class="text-end">{{ month_stats.impressions }}</td>
+                        <td>Клики</td>
+                        <td class="text-end">{{ month_stats.clicks }}</td>
+                    </tr>
+                    <tr>
+                        <td>CTR</td>
+                        <td class="text-end">{{ "%.2f"|format(month_stats.ctr) }}%</td>
+                        <td>Конверсия</td>
+                        <td class="text-end">{{ "%.2f"|format(month_stats.conversion) }}%</td>
+                    </tr>
+                    <tr>
+                        <td>Расход</td>
+                        <td class="text-end">{{ "%.2f"|format(month_stats.spend) }} ₽</td>
+                        <td>Выручка</td>
+                        <td class="text-end">{{ "%.2f"|format(month_stats.revenue) }} ₽</td>
+                    </tr>
+                    <tr>
+                        <td>CPA</td>
+                        <td class="text-end">{{ "%.2f"|format(month_stats.cpa) }} ₽</td>
+                        <td>ROMI</td>
+                        <td class="text-end">{{ "%.2f"|format(month_stats.romi) }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Уведомления -->
+{% if unread_notifications %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0"><i class="bi bi-bell"></i> Уведомления</h5>
+        <form method="POST" action="/notifications/read" class="d-inline">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Отметить прочитанными</button>
+        </form>
+    </div>
+    <div class="list-group list-group-flush">
+        {% for n in unread_notifications %}
+        <div class="list-group-item list-group-item-{{ n.level }}">
+            <small class="text-muted">{{ n.ts.strftime('%d.%m.%Y %H:%M') }}</small><br>
+            {{ n.message }}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Быстрые действия -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0"><i class="bi bi-lightning"></i> Быстрые действия</h5>
+    </div>
+    <div class="card-body">
+        <a href="/campaigns?sync=1" class="btn btn-primary me-2">
+            <i class="bi bi-arrow-repeat"></i> Синхронизировать кампании
+        </a>
+        <a href="/campaigns" class="btn btn-outline-primary me-2">
+            <i class="bi bi-list-ul"></i> Все кампании
+        </a>
+        <a href="/rules" class="btn btn-outline-primary">
+            <i class="bi bi-gear"></i> Авто-правила
+        </a>
+    </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+document.getElementById('collectStatsForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Сбор...';
+    const resp = await fetch('/api/stats/collect', { method: 'POST' });
+    const data = await resp.json();
+    if (data.ok) {
+        location.reload();
+    } else {
+        alert('Ошибка: ' + (data.detail || 'неизвестная'));
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Обновить статистику';
+    }
+});
+</script>
+{% endblock %}

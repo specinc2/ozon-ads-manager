@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Настройки — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-key"></i> Настройки</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">API-ключи Ozon Performance</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Ключи шифруются и хранятся в базе данных. Для получения ключей:
+                    <a href="https://docs.ozon.ru/api/performance/" target="_blank">документация Ozon</a>.
+                </p>
+                <form method="POST" action="/settings/keys">
+                    <div class="mb-3">
+                        <label class="form-label">Название (для себя)</label>
+                        <input type="text" class="form-control" name="name" value="Основные ключи">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Client-Id</label>
+                        <input type="text" class="form-control" name="client_id" required autocomplete="off">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Client-Secret</label>
+                        <input type="password" class="form-control" name="client_secret" required autocomplete="off">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-plus-lg"></i> Добавить и проверить
+                    </button>
+                </form>
+                <div class="form-text mt-2">
+                    При добавлении ключи проверяются тестовым запросом к API Ozon.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Seller API (данные из ЛК: остатки, цены, комиссии)</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Эти ключи позволяют автоматически подтягивать экономику товаров:
+                    остатки, цены, комиссии маркетплейса, логистику, эквайринг,
+                    участие в акциях и % выкупа. Получить ключи:
+                    <a href="https://seller.ozon.ru/app/settings/api-keys" target="_blank">Настройки → API-ключи в ЛК Ozon</a>.
+                </p>
+                <form method="POST" action="/settings/seller-keys">
+                    <div class="mb-3">
+                        <label class="form-label">Client-Id (Seller API)</label>
+                        <input type="text" class="form-control" name="seller_client_id" autocomplete="off">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Api-Key (Seller API)</label>
+                        <input type="password" class="form-control" name="seller_api_key" autocomplete="off">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-save"></i> Сохранить ключи
+                    </button>
+                </form>
+                {% if has_seller_keys %}
+                <div class="alert alert-success mt-3 mb-0">
+                    <i class="bi bi-check-circle"></i> Ключи Seller API подключены.
+                    Синхронизация выполняется автоматически планировщиком.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Подключённые ключи</h5>
+            </div>
+            <div class="card-body">
+                {% if api_keys %}
+                <div class="list-group">
+                    {% for k in api_keys %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ k.name }}</strong>
+                            {% if k.is_active %}
+                            <span class="badge bg-success ms-1">активен</span>
+                            {% else %}
+                            <span class="badge bg-secondary ms-1">выключен</span>
+                            {% endif %}
+                            <div class="text-muted small">
+                                Client-Id: <code>{{ k.id }}</code>
+                                {% if k.last_verified_at %}
+                                · проверен {{ k.last_verified_at.strftime('%d.%m.%Y %H:%M') }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <form method="POST" action="/settings/keys/{{ k.id }}/toggle">
+                                <button type="submit" class="btn btn-outline-warning" title="Вкл/выкл">
+                                    <i class="bi bi-toggle-on"></i>
+                                </button>
+                            </form>
+                            <form method="POST" action="/settings/keys/{{ k.id }}/delete"
+                                  onsubmit="return confirm('Удалить ключи?')">
+                                <button type="submit" class="btn btn-outline-danger" title="Удалить">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Ключи не добавлены.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

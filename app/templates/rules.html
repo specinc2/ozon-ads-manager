@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Авто-правила — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-gear"></i> Авто-правила</h1>
+
+<p class="text-muted">
+    Правила выполняются планировщиком каждые {{ 5 }} минут. Сработавшие действия фиксируются в журнале.
+</p>
+
+<!-- Форма создания правила -->
+<div class="card mb-4">
+    <div class="card-header"><h5 class="card-title mb-0">Новое правило</h5></div>
+    <div class="card-body">
+        <form id="ruleForm">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Название</label>
+                    <input type="text" class="form-control" name="name" required placeholder="Например: Стоп по бюджету">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Тип правила</label>
+                    <select class="form-select" name="rule_type" id="ruleTypeSelect" required>
+                        <option value="budget_stop">Авто-бюджет: остановить при 100%</option>
+                        <option value="budget_notify">Авто-бюджет: уведомить при пороге</option>
+                        <option value="auto_bid">Авто-ставки</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Кампания (необязательно)</label>
+                    <select class="form-select" name="campaign_id">
+                        <option value="">Все кампании</option>
+                        {% for c in campaigns %}
+                        <option value="{{ c.id }}">{{ c.title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Параметры бюджета -->
+            <div class="row g-3 mt-1" id="budgetParams">
+                <div class="col-md-6">
+                    <label class="form-label">Порог (% от дневного бюджета)</label>
+                    <input type="number" class="form-control" name="threshold" value="100" min="1" max="500">
+                </div>
+            </div>
+
+            <!-- Параметры авто-ставок -->
+            <div class="row g-3 mt-1 d-none" id="bidParams">
+                <div class="col-md-3">
+                    <label class="form-label">Метрика</label>
+                    <select class="form-select" name="metric">
+                        <option value="ctr">CTR (%)</option>
+                        <option value="conversion">Конверсия (%)</option>
+                        <option value="cpa">CPA (₽)</option>
+                        <option value="orders">Заказы</option>
+                        <option value="impressions">Показы</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Условие</label>
+                    <select class="form-select" name="operator">
+                        <option value="<">меньше</option>
+                        <option value=">">больше</option>
+                        <option value="<=">≤</option>
+                        <option value=">=">≥</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Значение</label>
+                    <input type="number" step="0.1" class="form-control" name="value" value="1.0">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Действие</label>
+                    <select class="form-select" name="action">
+                        <option value="decrease_by_percent">Уменьшить на %</option>
+                        <option value="increase_by_percent">Увеличить на %</option>
+                        <option value="decrease_by_amount">Уменьшить на ₽</option>
+                        <option value="increase_by_amount">Увеличить на ₽</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Размер</label>
+                    <input type="number" step="0.1" class="form-control" name="amount" value="10">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Мин. ставка (₽)</label>
+                    <input type="number" step="0.01" class="form-control" name="min_bid" value="0" placeholder="0 = без ограничения">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Макс. ставка (₽)</label>
+                    <input type="number" step="0.01" class="form-control" name="max_bid" value="0" placeholder="0 = без ограничения">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary mt-3">
+                <i class="bi bi-plus-lg"></i> Создать правило
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Список правил -->
+{% if rules %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Тип</th>
+                <th>Кампания</th>
+                <th>Параметры</th>
+                <th>Статус</th>
+                <th>Сработало</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rules %}
+            <tr>
+                <td>{{ r.name }}</td>
+                <td>
+                    {% if r.rule_type == 'budget_stop' %}<span class="badge bg-danger">Стоп по бюджету</span>
+                    {% elif r.rule_type == 'budget_notify' %}<span class="badge bg-warning text-dark">Уведомление по бюджету</span>
+                    {% else %}<span class="badge bg-info text-dark">Авто-ставки</span>{% endif %}
+                </td>
+                <td>{{ r.campaign_id if r.campaign_id else 'Все' }}</td>
+                <td><code class="small">{{ r.params|tojson }}</code></td>
+                <td>
+                    <span class="badge {% if r.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                        {{ 'Активно' if r.is_active else 'Выключено' }}
+                    </span>
+                </td>
+                <td>{{ r.last_triggered_at.strftime('%d.%m.%Y %H:%M') if r.last_triggered_at else '—' }}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning" onclick="toggleRule({{ r.id }})">
+                        <i class="bi bi-toggle-on"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRule({{ r.id }})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="bi bi-gear fs-1 text-muted"></i>
+    <p class="mt-2 text-muted">Правил пока нет. Создайте первое правило выше.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_scripts %}
+<script>
+document.getElementById('ruleTypeSelect')?.addEventListener('change', function() {
+    document.getElementById('budgetParams').classList.toggle('d-none', this.value === 'auto_bid');
+    document.getElementById('bidParams').classList.toggle('d-none', this.value !== 'auto_bid');
+});
+
+document.getElementById('ruleForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const isBid = form.get('rule_type') === 'auto_bid';
+    const params = {};
+    if (isBid) {
+        params.metric = form.get('metric');
+        params.operator = form.get('operator');
+        params.value = parseFloat(form.get('value'));
+        params.action = form.get('action');
+        params.amount = parseFloat(form.get('amount'));
+        params.min_bid = parseFloat(form.get('min_bid') || 0);
+        params.max_bid = parseFloat(form.get('max_bid') || 0);
+    } else {
+        params.threshold = parseFloat(form.get('threshold') || 100);
+    }
+    const body = {
+        name: form.get('name'),
+        rule_type: form.get('rule_type'),
+        campaign_id: form.get('campaign_id') ? parseInt(form.get('campaign_id')) : null,
+        params,
+        is_active: true
+    };
+    const resp = await fetch('/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+    if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
+});
+
+async function toggleRule(id) {
+    const resp = await fetch(`/api/rules/${id}/toggle`, { method: 'PUT' });
+    const data = await resp.json();
+    if (data.ok) location.reload();
+}
+
+async function deleteRule(id) {
+    if (!confirm('Удалить правило?')) return;
+    const resp = await fetch(`/api/rules/${id}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.ok) location.reload();
+}
+</script>
+{% endblock %}

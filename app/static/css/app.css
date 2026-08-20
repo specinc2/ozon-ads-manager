@@ -1,0 +1,45 @@
+/* Дополнительные стили поверх Bootstrap */
+body {
+    background-color: #f8f9fa;
+}
+
+[data-bs-theme="dark"] body {
+    background-color: #212529;
+}
+
+.card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+[data-bs-theme="dark"] .card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* Таблицы */
+.table td, .table th {
+    vertical-align: middle;
+}
+
+/* Ставки */
+.bid-input {
+    text-align: right;
+}
+
+/* Прогресс-бары бюджета */
+.progress {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-bs-theme="dark"] .progress {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Пульсация при синхронизации */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.spinning {
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}

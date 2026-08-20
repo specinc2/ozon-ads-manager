@@ -1,0 +1,27 @@
+services:
+  app:
+    build: .
+    container_name: ozon-ads
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./data:/app/data   # SQLite и ключ шифрования сохраняются на хосте
+    restart: unless-stopped
+
+  # Для продакшена раскомментируйте PostgreSQL:
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: ozon
+  #     POSTGRES_PASSWORD: ozon
+  #     POSTGRES_DB: ozon_ads
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #
+  # И в .env укажите:
+  # DATABASE_URL=postgresql+asyncpg://ozon:ozon@db:5432/ozon_ads
+
+# volumes:
+#   pgdata:
