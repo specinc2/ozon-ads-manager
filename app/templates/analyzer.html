@@ -219,10 +219,12 @@ function renderResult(data) {
         let html = '';
         // Внешние сервисы поиска по фото
         const su = data.photo_search_urls || {};
-        if (su.yandex || su.google_lens) {
-            html += '<div class="mb-1 small text-muted">Искать по фото во внешних сервисах:</div>';
-            if (su.yandex) html += `<a href="${su.yandex}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1 mb-1">Яндекс.Картинки</a>`;
+        if (su.yandex_products || su.yandex_similar || su.google_lens) {
+            html += '<div class="mb-1 small text-muted">Похожие товары по фото (открыть во внешнем сервисе, там видны цены):</div>';
+            if (su.yandex_products) html += `<a href="${su.yandex_products}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1 mb-1">Яндекс: похожие товары</a>`;
+            if (su.yandex_similar) html += `<a href="${su.yandex_similar}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1 mb-1">Яндекс: похожие фото</a>`;
             if (su.google_lens) html += `<a href="${su.google_lens}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1 mb-1">Google Lens</a>`;
+            html += '<div class="small text-muted mt-1">⚠ Проверяйте визуально, что найденный товар — тот же, что на фото (похожие ≠ идентичные).</div>';
         }
         if (data.photo_links && data.photo_links.length) {
             html += '<div class="mb-1 small text-muted mt-2">Найдено по фото на маркетплейсах:</div>';

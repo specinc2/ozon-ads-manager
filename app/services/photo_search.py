@@ -74,8 +74,13 @@ class YandexPhotoSearch:
         а также возвращает ссылки на внешние сервисы поиска по фото.
         """
         search_urls = {
-            "yandex": "https://yandex.ru/images/search?" + urllib.parse.urlencode({
-                "rpt": "imageview", "url": image_url,
+            # Яндекс.Картинки — сразу на вкладку «Похожие товары» (с ценами на карточках)
+            "yandex_products": "https://yandex.ru/images/search?" + urllib.parse.urlencode({
+                "rpt": "imageview", "url": image_url, "cbir_page": "products",
+            }),
+            # Обычный поиск похожих изображений
+            "yandex_similar": "https://yandex.ru/images/search?" + urllib.parse.urlencode({
+                "rpt": "imageview", "url": image_url, "cbir_page": "similar",
             }),
             "google_lens": "https://lens.google.com/uploadbyurl?" + urllib.parse.urlencode({
                 "url": image_url,
