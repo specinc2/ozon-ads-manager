@@ -261,10 +261,10 @@ class MarketSearch:
     # ------------------------------------------------------------------
 
     async def search_ozon(self, query: str, limit: int = 20) -> SearchResult:
-        url = "https://www.ozon.ru/api/entrypoint/v4/search?" + urllib.parse.urlencode({
-            "text": query, "page": 1,
+        url = "https://www.ozon.ru/search/?" + urllib.parse.urlencode({
+            "from_global": "true", "text": query,
         })
-        resp = await self._fetch_with_antibot(url, headers={"Accept": "application/json"})
+        resp = await self._fetch_with_antibot(url, headers={"Accept": "text/html,application/xhtml+xml,*/*"})
         if resp is None:
             return SearchResult(marketplace="ozon", ok=False,
                                 error="Ozon закрыт антиботом. Добавьте ключ бесплатного скрейпера в .env: SCRAPERAPI_API_KEY / ZENROWS_API_KEY / CRAWLBASE_TOKEN")
@@ -280,49 +280,30 @@ class MarketSearch:
             return SearchResult(marketplace="ozon", ok=False, error="Ozon закрыт антиботом (307/403)")
         resp.raise_for_status()
         points: list[PricePoint] = []
-        # Пробуем распарсить JSON (если пришёл прямой ответ API)
-        try:
-            data = resp.json()
-            items = data.get("items") or data.get("widgetStates") or []
-            for it in items:
-                if isinstance(it, dict):
-                    name = it.get("title") or it.get("name") or ""
-                    price_data = it.get("price") or {}
-                    price = price_data.get("price") or price_data.get("value")
-                    if price:
-                        points.append(PricePoint(price=float(price), name=name, marketplace="ozon"))
-        except (ValueError, TypeError):
-            # Если не JSON — парсим HTML (ScraperAPI/ZenRows возвращают HTML страницы)
-            html = resp.text
-            # Ищем цены в data-атрибутах Ozon: data-price="..." или ts-price
-            import re
-            # Паттерны цен в HTML Ozon
-            price_patterns = [
-                r'data-price="([\d.]+)"',
-                r'"price":"([\d.]+)"',
-                r'<span[^>]*class="[^"]*price[^"]*"[^>]*>([\d\s]+)\s?₽',
-                r'<span[^>]*data-test-id="price[^"]*"[^>]*>([\d\s]+)',
-                r'([\d]{2,6})\s?₽',
-            ]
-            for pat in price_patterns:
-                for m in re.finditer(pat, html):
-                    try:
-                        raw = m.group(1).replace(" ", "").replace("\u00a0", "")
-                        price = float(raw)
-                        if 5 < price < 10_000_000:
-                            points.append(PricePoint(price=price, marketplace="ozon"))
-                    except (ValueError, IndexError):
-                        continue
-                if len(points) >= limit:
-                    break
-            # Дедупликация
-            seen = set()
-            uniq = []
-            for p in points:
-                if p.price not in seen:
-                    seen.add(p.price)
-                    uniq.append(p)
-            points = uniq[:limit]
+        html = resp.text
+        # Парсим цены из HTML страницы поиска Ozon
+        import re
+        price_patterns = [
+            r'data-price="([\d.]+)"',
+            r'"price":"([\d.]+)"',
+            r'<span[^>]*class="[^"]*price[^"]*"[^>]*>([\d\s]+)\s?₽',
+            r'<span[^>]*data-test-id="price[^"]*"[^>]*>([\d\s]+)',
+            r'([\d]{2,6})\s?₽',
+        ]
+        seen_prices: set[float] = set()
+        for pat in price_patterns:
+            for m in re.finditer(pat, html):
+                try:
+                    raw = m.group(1).replace(" ", "").replace("\u00a0", "")
+                    price = float(raw)
+                    if 5 < price < 10_000_000 and price not in seen_prices:
+                        seen_prices.add(price)
+                        points.append(PricePoint(price=price, marketplace="ozon"))
+                except (ValueError, IndexError):
+                    continue
+            if len(points) >= limit:
+                break
+        points = points[:limit]
 
         if not points:
             return SearchResult(marketplace="ozon", ok=False, error="Нет данных в ответе Ozon")
