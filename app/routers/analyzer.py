@@ -97,6 +97,66 @@ async def analyzer_history(request: Request, db: AsyncSession = Depends(get_db))
     })
 
 
+@router.get("/analyzer/history/export")
+async def analyzer_history_export(request: Request, db: AsyncSession = Depends(get_db)):
+    """Экспорт истории анализатора в CSV (все поиски с товарами и ценами)."""
+    user = await get_current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+
+    import json as _json
+    from app.models import AnalyzerHistory
+    from app.services.csv_export import csv_response
+
+    result = await db.execute(
+        select(AnalyzerHistory)
+        .where(AnalyzerHistory.user_id == user.id)
+        .order_by(AnalyzerHistory.ts.desc())
+        .limit(500)
+    )
+    records = list(result.scalars().all())
+
+    rows = []
+    for rec in records:
+        try:
+            items = _json.loads(rec.items_json or "[]")
+        except Exception:
+            items = []
+        try:
+            photo_prices = _json.loads(rec.photo_prices or "[]")
+        except Exception:
+            photo_prices = []
+        for it in items:
+            rows.append({
+                "Время": rec.ts,
+                "Запрос": rec.query,
+                "Название": it.get("title", ""),
+                "Маркетплейс": it.get("marketplace", ""),
+                "Цена": it.get("price", 0),
+                "Ссылка": it.get("url", ""),
+                "Фото товара": it.get("image", ""),
+            })
+        # Если товаров нет — хотя бы строка с ценами из выдачи
+        if not items:
+            rows.append({
+                "Время": rec.ts,
+                "Запрос": rec.query,
+                "Название": "",
+                "Маркетплейс": "",
+                "Цена": "",
+                "Ссылка": "",
+                "Фото товара": "",
+                "Цены из выдачи": "; ".join(f"{p:.0f} ₽" for p in photo_prices[:20]),
+            })
+
+    return csv_response(
+        rows,
+        fieldnames=["Время", "Запрос", "Название", "Маркетплейс", "Цена",
+                     "Ссылка", "Фото товара", "Цены из выдачи"],
+        filename="analyzer_history.csv",
+    )
+
+
 async def get_seller_defaults(db: AsyncSession, user_id: int) -> dict:
     """Реальные комиссии по категориям + средняя логистика/эквайринг/выкуп (из Seller API)."""
     from sqlalchemy import func, select

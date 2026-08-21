@@ -74,7 +74,7 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="card-title mb-0">Детальные данные по дням</h5>
-        <button class="btn btn-outline-success btn-sm" onclick="exportCSV()">
+        <button class="btn btn-outline-success btn-sm" onclick="exportStatsCSV()">
             <i class="bi bi-filetype-csv"></i> Экспорт CSV
         </button>
     </div>
@@ -180,20 +180,9 @@ if (body) {
     });
 }
 
-function exportCSV() {
-    const rows = [['Дата','Показы','Клики','CTR','Заказы','Выручка','Расход','CPA','ROMI']];
-    stats.forEach(s => {
-        const ctr = s.impressions > 0 ? (s.clicks / s.impressions * 100).toFixed(2) : '0.00';
-        const cpa = s.orders > 0 ? (s.spend / s.orders).toFixed(2) : '';
-        const romi = s.spend > 0 ? (s.revenue / s.spend).toFixed(2) : '';
-        rows.push([s.stat_date, s.impressions, s.clicks, ctr, s.orders, s.revenue, s.spend, cpa, romi]);
-    });
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'statistics.csv';
-    a.click();
+function exportStatsCSV() {
+    const params = new URLSearchParams(window.location.search);
+    window.location.href = '/api/stats/export?' + params.toString();
 }
 </script>
 {% endblock %}

@@ -448,3 +448,94 @@ async def api_sync_seller(user: User = Depends(require_user), db: AsyncSession =
                      entity_type="product", entity_name="все товары",
                      details=result)
     return {"ok": True, **result}
+
+
+# ------------------------------------------------------------------
+# Экспорт CSV
+# ------------------------------------------------------------------
+
+@router.get("/stats/export")
+async def export_stats_csv(
+    request: Request,
+    campaign_pk: str = "",
+    days: int = 30,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Экспорт статистики в CSV (загружается как файл)."""
+    from datetime import date, timedelta
+    from app.services.campaigns import get_campaigns
+    from app.services.statistics import get_stats_for_period
+    from app.services.csv_export import csv_response
+
+    campaign_pk_int = int(campaign_pk) if campaign_pk else None
+    today = date.today()
+    date_from = today - timedelta(days=days)
+
+    stats = await get_stats_for_period(db, user.id, campaign_pk_int, date_from, today)
+    campaigns = await get_campaigns(db, user.id)
+    camp_map = {c.id: c.title for c in campaigns}
+
+    return csv_response(
+        [
+            {
+                "Дата": s.stat_date,
+                "Кампания": camp_map.get(s.campaign_id, str(s.campaign_id)),
+                "Показы": s.impressions,
+                "Клики": s.clicks,
+                "CTR": s.ctr,
+                "Заказы": s.orders,
+                "Выручка": s.revenue,
+                "Расход": s.spend,
+                "CPA": s.cpa,
+                "ROMI": s.romi,
+            }
+            for s in stats
+        ],
+        fieldnames=["Дата", "Кампания", "Показы", "Клики", "CTR", "Заказы",
+                     "Выручка", "Расход", "CPA", "ROMI"],
+        filename=f"stats_{date_from.isoformat()}_{today.isoformat()}.csv",
+    )
+
+
+@router.get("/products/export")
+async def export_products_csv(
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Экспорт экономики всех товаров в CSV."""
+    from app.models import ProductInfo
+    from app.services.csv_export import csv_response
+
+    result = await db.execute(
+        select(ProductInfo)
+        .where(ProductInfo.user_id == user.id)
+        .order_by(ProductInfo.name)
+    )
+    products = list(result.scalars().all())
+
+    return csv_response(
+        [
+            {
+                "SKU": p.sku,
+                "Название": p.name,
+                "Цена продажи": p.price,
+                "Себестоимость": p.cost_price,
+                "Остатки": p.leftovers,
+                "Тип поставки": p.fulfillment_type,
+                "Комиссия %": p.commission_pct,
+                "Логистика": p.logistics_cost,
+                "Эквайринг %": p.acquiring_pct,
+                "% выкупа": p.buyout_pct,
+                "В акции": "Да" if p.in_promotion else "Нет",
+                "Скидка акции %": p.promotion_discount_pct,
+                "Заказов за месяц": p.monthly_orders,
+                "Маржа шт": (p.price - p.cost_price) if p.price and p.cost_price else 0,
+            }
+            for p in products
+        ],
+        fieldnames=["SKU", "Название", "Цена продажи", "Себестоимость", "Остатки",
+                     "Тип поставки", "Комиссия %", "Логистика", "Эквайринг %",
+                     "% выкупа", "В акции", "Скидка акции %", "Заказов за месяц", "Маржа шт"],
+        filename="products_economics.csv",
+    )
