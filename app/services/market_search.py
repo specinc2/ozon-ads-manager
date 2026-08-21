@@ -261,6 +261,26 @@ class MarketSearch:
     # ------------------------------------------------------------------
 
     async def search_ozon(self, query: str, limit: int = 20) -> SearchResult:
+        # Через Ozon Bridge (Chrome на ПК пользователя) — приоритетный путь
+        if OZON_BRIDGE_URL:
+            try:
+                search_url = "https://www.ozon.ru/search/?" + urllib.parse.urlencode({
+                    "from_global": "true", "text": query,
+                })
+                bridge_url = OZON_BRIDGE_URL + "/fetch?" + urllib.parse.urlencode({"url": search_url})
+                async with httpx.AsyncClient(timeout=70.0) as bridge_client:
+                    resp = await bridge_client.get(bridge_url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get("ok") and data.get("prices"):
+                            points = [PricePoint(price=p, marketplace="ozon") for p in data["prices"]]
+                            return SearchResult(marketplace="ozon", ok=True, prices=points[:limit])
+                        if data.get("ok") and data.get("error"):
+                            return SearchResult(marketplace="ozon", ok=False, error=f"Ozon Bridge: {data['error']}")
+            except Exception as e:
+                logger.warning("Ozon Bridge search error: %s", e)
+                # падаем дальше на обычную цепочку
+
         url = "https://www.ozon.ru/search/?" + urllib.parse.urlencode({
             "from_global": "true", "text": query,
         })
