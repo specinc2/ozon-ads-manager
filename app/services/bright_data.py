@@ -62,45 +62,57 @@ async def fetch_prices_by_urls(
         if resp.status_code not in (200, 202):
             raise BrightDataError(f"Bright Data: HTTP {resp.status_code} ({resp.text[:200]})")
 
-        data = resp.json()
+        text = resp.text
 
-        # 2. Если готово сразу:
-        #    - список записей
-        #    - одиночный dict с данными товара (url/sku/name)
+        # 2. Если готово сразу — парсим JSON / JSON Lines / одиночный dict
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+
+        records: list[dict] = []
         if isinstance(data, list):
-            return data[:limit]
-        if isinstance(data, dict) and "snapshot_id" not in data:
-            # Одиночная запись товара (API вернул её напрямую)
+            records = data
+        elif isinstance(data, dict) and "snapshot_id" in data:
+            snapshot_id = data["snapshot_id"]
+            # Ждём готовности snapshot
+            for _ in range(30):  # до ~5 минут
+                await asyncio.sleep(10)
+                try:
+                    prog = await _get(client, PROGRESS_URL.format(snapshot_id=snapshot_id), headers)
+                    if prog.status_code != 200:
+                        continue
+                    status = prog.json().get("status")
+                    if status == "ready":
+                        snap = await _get(client, SNAPSHOT_URL.format(snapshot_id=snapshot_id), headers)
+                        if snap.status_code == 200:
+                            snap_data = snap.json()
+                            if isinstance(snap_data, list):
+                                records = snap_data
+                            elif isinstance(snap_data, dict) and not snap_data.get("error"):
+                                records = [snap_data]
+                        break
+                    if status == "error":
+                        break
+                except httpx.HTTPError as e:
+                    logger.warning("Bright Data progress: %s", e)
+        elif isinstance(data, dict):
+            # Одиночная запись товара (url/sku/name)
             if data.get("url") or data.get("sku") or data.get("name"):
-                return [data]
+                records = [data]
+        else:
+            # JSON Lines: по одному объекту на строку
+            for line in text.splitlines():
+                line = line.strip()
+                if line.startswith("{"):
+                    try:
+                        import json as _json
 
-        # 3. Иначе — ждём готовности snapshot
-        snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
-        if not snapshot_id:
-            return []
+                        records.append(_json.loads(line))
+                    except Exception:
+                        continue
 
-        for _ in range(30):  # до ~5 минут
-            await asyncio.sleep(10)
-            try:
-                prog = await _get(client, PROGRESS_URL.format(snapshot_id=snapshot_id), headers)
-                if prog.status_code != 200:
-                    continue
-                status = prog.json().get("status")
-                if status == "ready":
-                    snap = await _get(client, SNAPSHOT_URL.format(snapshot_id=snapshot_id), headers)
-                    if snap.status_code == 200:
-                        records = snap.json()
-                        if isinstance(records, list):
-                            return records[:limit]
-                        if isinstance(records, dict) and records.get("error"):
-                            logger.warning("Bright Data snapshot error: %s", records["error"])
-                            return []
-                    return []
-                if status == "error":
-                    return []
-            except httpx.HTTPError as e:
-                logger.warning("Bright Data progress: %s", e)
-    return []
+        return records[:limit]
 
 
 def extract_price(record: dict[str, Any]) -> float | None:
