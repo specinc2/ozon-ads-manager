@@ -349,6 +349,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         import json as _json
         from app.models import AnalyzerHistory
 
+        # Товары из фото-поиска
         items_for_history = [
             {
                 "url": link.get("url", ""),
@@ -359,6 +360,22 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
             }
             for link in photo_links
         ]
+        # Дополняем товарами из текстового поиска (WB/Ozon/YM/Ali — где есть URL)
+        seen_item_urls = {it["url"] for it in items_for_history if it["url"]}
+        for r in results:
+            if not (r.ok and r.prices):
+                continue
+            for p in r.prices:
+                if not p.url or p.url in seen_item_urls:
+                    continue
+                seen_item_urls.add(p.url)
+                items_for_history.append({
+                    "url": p.url,
+                    "marketplace": p.marketplace,
+                    "title": p.name,
+                    "price": p.price,
+                    "image": "",
+                })
         history = AnalyzerHistory(
             user_id=user.id,
             query=product_name,
