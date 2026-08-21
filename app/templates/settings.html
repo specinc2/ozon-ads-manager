@@ -172,28 +172,6 @@
                 {% endif %}
             </div>
         </div>
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Плагин браузера (цены Ozon)</h5>
-            </div>
-            <div class="card-body">
-                <p class="text-muted small">
-                    Плагин читает карточку Ozon прямо в вашем браузере и автоматически
-                    отправляет цену и страну поставки (РФ/Китай). Антибот не нужен.
-                </p>
-                <ol class="small">
-                    <li>Токен: {{ proxy_setting.plugin_token if proxy_setting and proxy_setting.plugin_token else 'не создан' }}
-                        {% if not (proxy_setting and proxy_setting.plugin_token) %}
-                        — <a href="/collect">создать на странице «Цены плагина»</a>
-                        {% endif %}
-                    </li>
-                    <li>Скачайте расширение: папка <code>extension</code> из проекта.</li>
-                    <li>Chrome → <code>chrome://extensions</code> → «Режим разработчика» → «Загрузить распакованное» → выберите папку <code>extension</code>.</li>
-                    <li>Откройте иконку плагина → вставьте токен → Сохранить.</li>
-                    <li>Открывайте карточки Ozon — цены собираются автоматически (<a href="/collect">см. список</a>).</li>
-                </ol>
-            </div>
-        </div>
     </div>
     <div class="col-md-6">
         <div class="card">

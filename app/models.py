@@ -204,7 +204,6 @@ class ProxySetting(Base):
     # Bright Data (официальный API цен Ozon по URL товара)
     bd_api_key: Mapped[str] = mapped_column(Text, default="")      # Bearer-токен API
     bd_dataset_id: Mapped[str] = mapped_column(Text, default="")   # dataset_id (gd_...)
-    plugin_token: Mapped[str] = mapped_column(Text, default="")    # токен браузерного плагина
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -321,27 +320,6 @@ class Notification(Base):
     level: Mapped[str] = mapped_column(String(16), default="info")  # info / warning / danger
     message: Mapped[str] = mapped_column(Text)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
-
-
-class PriceCollect(Base):
-    """Цена товара Ozon, собранная браузерным плагином пользователя.
-
-    Плагин читает карточку Ozon прямо в браузере пользователя (антибот не нужен)
-    и отправляет сюда: название, цену, страну поставки (РФ/Китай), SKU.
-    """
-
-    __tablename__ = "price_collects"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    url: Mapped[str] = mapped_column(Text, default="")        # полный URL карточки
-    sku: Mapped[str] = mapped_column(String(64), default="")  # артикул Ozon
-    name: Mapped[str] = mapped_column(Text, default="")       # название товара
-    price: Mapped[float] = mapped_column(Float, default=0)    # цена в рублях
-    currency: Mapped[str] = mapped_column(String(8), default="RUB")
-    country: Mapped[str] = mapped_column(String(64), default="")  # Россия / Китай / ...
-    marketplace: Mapped[str] = mapped_column(String(32), default="ozon")
-    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
 class AnalyzerHistory(Base):

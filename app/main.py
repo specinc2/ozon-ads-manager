@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings, BASE_DIR
 from app.database import init_db
-from app.routers import analyzer, api, pages, plugin
+from app.routers import analyzer, api, pages
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,4 +56,3 @@ app.mount("/static-uploads", StaticFiles(directory=str(_uploads_dir)), name="sta
 app.include_router(pages.router)
 app.include_router(api.router)
 app.include_router(analyzer.router)
-app.include_router(plugin.router, prefix="/api")

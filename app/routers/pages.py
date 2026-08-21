@@ -19,7 +19,6 @@ from app.models import (
     Campaign,
     CampaignSchedule,
     Notification,
-    PriceCollect,
     Product,
     ProductInfo,
     User,
@@ -748,55 +747,6 @@ async def bidder_page(request: Request, db: AsyncSession = Depends(get_db)):
     ctx["rules"] = list(result.scalars().all())
     ctx["campaigns"] = await get_campaigns(db, user.id)
     return templates.TemplateResponse("bidder.html", ctx)
-
-
-# ------------------------------------------------------------------
-# Собранные цены (браузерный плагин)
-# ------------------------------------------------------------------
-
-@router.get("/collect")
-async def collected_prices(request: Request, db: AsyncSession = Depends(get_db)):
-    ctx = await _common_context(request, db)
-    user = ctx["user"]
-    if not user:
-        return RedirectResponse("/login", status_code=302)
-
-    from datetime import datetime as dt_cls
-
-    # Последние 200 собранных цен пользователя
-    result = await db.execute(
-        select(PriceCollect)
-        .where(PriceCollect.user_id == user.id)
-        .order_by(PriceCollect.ts.desc())
-        .limit(200)
-    )
-    items = list(result.scalars().all())
-
-    # Сводка по странам
-    result2 = await db.execute(
-        select(PriceCollect.country, PriceCollect.marketplace)
-        .where(PriceCollect.user_id == user.id)
-    )
-    countries: dict[str, int] = {}
-    for country, _ in result2.all():
-        key = country or "неизвестно"
-        countries[key] = countries.get(key, 0) + 1
-
-    # Токен плагина
-    from app.models import ProxySetting
-    proxy_result = await db.execute(
-        select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
-    )
-    proxy_setting = proxy_result.scalar_one_or_none()
-    plugin_token = ""
-    if proxy_setting and proxy_setting.plugin_token:
-        plugin_token = proxy_setting.plugin_token
-
-    ctx["items"] = items
-    ctx["countries"] = dict(sorted(countries.items(), key=lambda x: -x[1]))
-    ctx["plugin_token"] = plugin_token
-    ctx["total"] = len(items)
-    return templates.TemplateResponse("collect.html", ctx)
 
 
 # ------------------------------------------------------------------
