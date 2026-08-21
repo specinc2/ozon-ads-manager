@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}История анализатора — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-clock-history"></i> История анализатора</h1>
+
+<p class="text-muted mb-4">
+    Ваши поиски цен по фото и названию. Для каждого поиска показаны найденные
+    товары со ссылками, ценами и миниатюрами.
+</p>
+
+{% if not history %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> Пока нет сохранённых поисков.
+    Откройте <a href="/analyzer">Анализатор</a> и загрузите фото товара.
+</div>
+{% endif %}
+
+{% for h in history %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <strong>{{ h.query or 'Без названия' }}</strong>
+            <span class="text-muted small ms-2">{{ h.ts.strftime("%d.%m.%Y %H:%M") }}</span>
+            {% if h.stats.get('total') %}
+            <span class="badge bg-primary ms-2">{{ h.stats.total }} цен</span>
+            {% endif %}
+        </div>
+        <div class="small text-muted">
+            {% if h.stats.get('median') %}
+            медиана <strong>{{ "%.0f"|format(h.stats.median) }} ₽</strong>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        {% if h.photo_url %}
+        <div class="mb-3">
+            <img src="{{ h.photo_url }}" alt="Фото товара" class="img-thumbnail" style="max-height: 120px;">
+        </div>
+        {% endif %}
+
+        {% if h.photo_prices %}
+        <div class="mb-2">
+            <strong class="small">Цены из выдачи Яндекса:</strong>
+            <span class="small">
+                {% for p in h.photo_prices[:15] %}{{ "%.0f"|format(p) }} ₽{% if not loop.last %}, {% endif %}{% endfor %}
+                {% if h.photo_prices|length > 15 %}…{% endif %}
+            </span>
+        </div>
+        {% endif %}
+
+        {% if h.items %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-2">
+            {% for it in h.items %}
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body p-2 d-flex">
+                        {% if it.image %}
+                        <img src="{{ it.image }}" alt="" style="width: 56px; height: 56px; object-fit: cover;"
+                             class="rounded me-2 flex-shrink-0">
+                        {% endif %}
+                        <div class="min-w-0">
+                            <div class="text-truncate small" style="max-width: 200px;" title="{{ it.title or it.url }}">
+                                {% if it.url %}
+                                <a href="{{ it.url }}" target="_blank" rel="noopener">{{ it.title or it.marketplace or 'Товар' }}</a>
+                                {% else %}
+                                {{ it.title or 'Товар' }}
+                                {% endif %}
+                            </div>
+                            <div>
+                                <span class="badge bg-secondary">{{ it.marketplace }}</span>
+                                {% if it.price %}<span class="badge bg-success">{{ "%.0f"|format(it.price) }} ₽</span>{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">Товары не найдены.</p>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{% endblock %}

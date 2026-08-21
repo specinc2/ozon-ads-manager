@@ -342,3 +342,23 @@ class PriceCollect(Base):
     country: Mapped[str] = mapped_column(String(64), default="")  # Россия / Китай / ...
     marketplace: Mapped[str] = mapped_column(String(32), default="ozon")
     ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AnalyzerHistory(Base):
+    """История поисков анализатора: фото + найденные товары с ценами и фото.
+
+    Сохраняется при каждом запросе /analyzer/api. Хранит в JSON список товаров:
+    [{url, marketplace, title, price, image}], найденных по фото/названию,
+    плюс общую статистику анализа.
+    """
+
+    __tablename__ = "analyzer_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    query: Mapped[str] = mapped_column(Text, default="")          # название/запрос
+    photo_url: Mapped[str] = mapped_column(Text, default="")      # загруженное фото
+    photo_prices: Mapped[str] = mapped_column(Text, default="[]") # JSON [price, ...] из выдачи
+    items_json: Mapped[str] = mapped_column(Text, default="[]")   # JSON [{url, marketplace, title, price, image}]
+    stats_json: Mapped[str] = mapped_column(Text, default="{}")   # JSON {total, median, mean, min, max, recommended}
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

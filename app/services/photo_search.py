@@ -40,6 +40,7 @@ class FoundLink:
     marketplace: str
     title: str = ""
     price: float = 0  # цена из выдачи Яндекса (если найдена)
+    image: str = ""   # миниатюра товара из выдачи
 
 
 @dataclass
@@ -102,9 +103,17 @@ class YandexPhotoSearch:
                                  total_results=total, search_urls=search_urls)
 
     def _extract_marketplace_links(self, html: str, limit: int) -> list[FoundLink]:
-        """Ищет ссылки на карточки товаров в выдаче Яндекса + цены рядом."""
+        """Ищет ссылки на карточки товаров в выдаче Яндекса + миниатюры и цены."""
         found: list[FoundLink] = []
         seen: set[str] = set()
+
+        # Миниатюры товаров из выдачи (Яндекс хранит их на avatars.mds.yandex.net)
+        images = re.findall(r'<img[^>]*src="(https://avatars\.mds\.yandex\.net/[^"]+)"[^>]*>', html)
+        # Картинки в data-атрибутах (JSON-разметка)
+        if not images:
+            images = re.findall(r'"image":"(https://avatars\.mds\.yandex\.net/[^"]+)"', html)
+        images = [img.replace("&amp;", "&") for img in images]
+        img_iter = iter(images)
 
         # Ссылки вида href="https://www.ozon.ru/product/..." (и другие маркетплейсы)
         for m in re.finditer(r'href="(https?://[^"]+)"', html):
@@ -113,20 +122,10 @@ class YandexPhotoSearch:
             market = self._detect_marketplace(url)
             if market and "/product/" in url and url not in seen:
                 seen.add(url)
-                found.append(FoundLink(url=url[:500], marketplace=market))
+                image = next(img_iter, "")
+                found.append(FoundLink(url=url[:500], marketplace=market, image=image))
                 if len(found) >= limit:
                     break
-
-        # Цены в aria-label рядом со ссылками: "Цена 262₽. Старая цена 275₽"
-        for m in re.finditer(r'aria-label="([^"]*Цена\s*([\d\s\u00a0]+)₽[^"]*)"', html):
-            raw = m.group(2).replace(" ", "").replace("\u00a0", "")
-            try:
-                price = float(raw)
-                if 5 < price < 10_000_000:
-                    # Привязываем к ближайшей ссылке (если есть) — иначе просто в prices
-                    pass
-            except ValueError:
-                continue
 
         return found
 

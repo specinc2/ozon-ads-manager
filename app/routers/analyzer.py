@@ -40,6 +40,56 @@ async def analyzer_page(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
+@router.get("/analyzer/history")
+async def analyzer_history(request: Request, db: AsyncSession = Depends(get_db)):
+    """История поисков анализатора: фото, найденные товары, цены, фото ссылок."""
+    user = await get_current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+
+    from app.models import AnalyzerHistory
+
+    result = await db.execute(
+        select(AnalyzerHistory)
+        .where(AnalyzerHistory.user_id == user.id)
+        .order_by(AnalyzerHistory.ts.desc())
+        .limit(100)
+    )
+    records = list(result.scalars().all())
+
+    # Превращаем JSON-поля в структуры для шаблона
+    import json as _json
+    history_items = []
+    for rec in records:
+        try:
+            items = _json.loads(rec.items_json or "[]")
+        except Exception:
+            items = []
+        try:
+            stats = _json.loads(rec.stats_json or "{}")
+        except Exception:
+            stats = {}
+        try:
+            photo_prices = _json.loads(rec.photo_prices or "[]")
+        except Exception:
+            photo_prices = []
+        history_items.append({
+            "id": rec.id,
+            "query": rec.query,
+            "photo_url": rec.photo_url,
+            "photo_prices": photo_prices,
+            "items": items,
+            "stats": stats,
+            "ts": rec.ts,
+            "total": len(items),
+        })
+
+    return templates.TemplateResponse("analyzer_history.html", {
+        "request": request, "user": user, "flashes": [],
+        "history": history_items,
+    })
+
+
 async def get_seller_defaults(db: AsyncSession, user_id: int) -> dict:
     """Реальные комиссии по категориям + средняя логистика/эквайринг/выкуп (из Seller API)."""
     from sqlalchemy import func, select
@@ -235,7 +285,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         "aliexpress": f"https://www.aliexpress.com/w/wholesale-{q}.html",
     }
 
-    return {
+    response = {
         "ok": True,
         "product_name": product_name,
         "photo_url": photo_url,
@@ -267,6 +317,38 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
             "summary": rec.summary,
         },
     }
+
+    # Сохраняем историю анализа (список товаров с ценами и фото)
+    try:
+        import json as _json
+        from app.models import AnalyzerHistory
+
+        items_for_history = [
+            {
+                "url": link.get("url", ""),
+                "marketplace": link.get("marketplace", ""),
+                "title": link.get("title", ""),
+                "price": link.get("price", 0),
+                "image": link.get("image", ""),
+            }
+            for link in photo_links
+        ]
+        history = AnalyzerHistory(
+            user_id=user.id,
+            query=product_name,
+            photo_url=photo_url,
+            photo_prices=_json.dumps(photo_prices, ensure_ascii=False),
+            items_json=_json.dumps(items_for_history, ensure_ascii=False),
+            stats_json=_json.dumps(response["stats"], ensure_ascii=False),
+        )
+        db.add(history)
+        await db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("analyzer").warning("Не удалось сохранить историю: %s", e)
+        await db.rollback()
+
+    return response
 
 
 def _absolute(request: Request, path: str) -> str:
