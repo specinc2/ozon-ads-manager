@@ -74,6 +74,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
 
     form = await request.form()
     product_name = (form.get("product_name") or "").strip()
+    ozon_url = (form.get("ozon_url") or "").strip()
     cost_price = _float(form.get("cost_price"))
     commission_pct = _float(form.get("commission_pct"), default=20.0)
     logistics_cost = _float(form.get("logistics_cost"), default=50.0)
@@ -144,14 +145,18 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         if r.ok and r.prices:
             all_prices.extend(p.price for p in r.prices)
 
-    # 2b. Bright Data: официальные цены Ozon по URL карточек из поиска по фото
+    # 2b. Bright Data: официальные цены Ozon по URL карточек
     bd_prices: list[float] = []
     bd_info: dict = {"ok": False, "count": 0, "error": ""}
     if proxy_setting and proxy_setting.bd_api_key and proxy_setting.bd_dataset_id:
         ozon_urls = [
             link["url"] for link in photo_links
             if "ozon" in (link.get("url") or "").lower()
-        ][:10]
+        ]
+        if ozon_url and "ozon" in ozon_url.lower():
+            if ozon_url not in ozon_urls:
+                ozon_urls.append(ozon_url)
+        ozon_urls = ozon_urls[:10]
         if ozon_urls:
             from app.services.bright_data import (
                 BrightDataError,
@@ -172,6 +177,9 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
                 bd_info = {"ok": False, "count": 0, "error": str(e)}
             except Exception as e:
                 bd_info = {"ok": False, "count": 0, "error": f"Bright Data: {str(e)[:200]}"}
+        else:
+            bd_info = {"ok": False, "count": 0,
+                       "error": "Нет URL товаров Ozon. Вставьте ссылку на карточку Ozon или найдите товар по фото."}
     else:
         bd_info = {"ok": False, "count": 0, "error": "Bright Data не подключено (Настройки)"}
         if proxy_setting and proxy_setting.bd_api_key and not proxy_setting.bd_dataset_id:

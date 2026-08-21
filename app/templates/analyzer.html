@@ -24,6 +24,12 @@
                         <input type="text" class="form-control" name="product_name" id="productName" required
                                placeholder="Например: разъем аудио Jack 3.5 мм">
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL товара Ozon (необязательно)</label>
+                        <input type="text" class="form-control" name="ozon_url" id="ozonUrl"
+                               placeholder="https://www.ozon.ru/product/... — цена возьмётся через Bright Data">
+                        <div class="form-text">Если указать ссылку на карточку Ozon — цена будет получена через официальный API Bright Data (без обхода антибота).</div>
+                    </div>
                     <div class="row g-2">
                         <div class="col-md-6 mb-2">
                             <label class="form-label">Себестоимость, ₽</label>
