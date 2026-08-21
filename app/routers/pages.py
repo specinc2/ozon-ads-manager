@@ -85,6 +85,15 @@ async def login_page(request: Request, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login")
 async def login_action(request: Request, db: AsyncSession = Depends(get_db)):
+    from app.services.rate_limit import (
+        client_ip, is_blocked, register_failure, register_success,
+    )
+
+    ip = client_ip(request)
+    if is_blocked(ip):
+        flash(request, "Слишком много попыток входа. Подождите 10 минут и попробуйте снова.", "danger")
+        return templates.TemplateResponse("login.html", await _common_context(request, db))
+
     form = await request.form()
     login = form.get("username", "").strip()
     password = form.get("password", "")
@@ -95,9 +104,11 @@ async def login_action(request: Request, db: AsyncSession = Depends(get_db)):
     )
     user = result.scalar_one_or_none()
     if not user or not verify_password(password, user.password_hash):
+        register_failure(ip)
         flash(request, "Неверное имя пользователя, email или пароль", "danger")
         return templates.TemplateResponse("login.html", await _common_context(request, db))
 
+    register_success(ip)
     token = create_session_token(user.id)
     resp = RedirectResponse("/", status_code=302)
     resp.set_cookie(key=SESSION_COOKIE, value=token, httponly=True, max_age=7 * 86400, samesite="lax")
