@@ -29,8 +29,10 @@ def _format_value(value: Any) -> str:
     """Приводит значение к строке для CSV (даты, числа — с запятой)."""
     if value is None:
         return ""
-    if isinstance(value, (datetime, date)):
+    if isinstance(value, datetime):
         return value.isoformat(sep=" ")[:19]
+    if isinstance(value, date):
+        return value.isoformat()
     if isinstance(value, float):
         # Excel ru-RU ждёт запятую как разделитель дробной части
         return f"{value:.2f}".replace(".", ",")
