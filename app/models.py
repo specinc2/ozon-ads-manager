@@ -201,6 +201,9 @@ class ProxySetting(Base):
     proxy_url: Mapped[str] = mapped_column(Text, default="")   # http://user:pass@ip:port
     ozon_cookies: Mapped[str] = mapped_column(Text, default="")  # JSON-строка с куками Ozon
     expires_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Bright Data (официальный API цен Ozon по URL товара)
+    bd_api_key: Mapped[str] = mapped_column(Text, default="")      # Bearer-токен API
+    bd_dataset_id: Mapped[str] = mapped_column(Text, default="")   # dataset_id (gd_...)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

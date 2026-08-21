@@ -144,6 +144,41 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         if r.ok and r.prices:
             all_prices.extend(p.price for p in r.prices)
 
+    # 2b. Bright Data: официальные цены Ozon по URL карточек из поиска по фото
+    bd_prices: list[float] = []
+    bd_info: dict = {"ok": False, "count": 0, "error": ""}
+    if proxy_setting and proxy_setting.bd_api_key and proxy_setting.bd_dataset_id:
+        ozon_urls = [
+            link["url"] for link in photo_links
+            if "ozon" in (link.get("url") or "").lower()
+        ][:10]
+        if ozon_urls:
+            from app.services.bright_data import (
+                BrightDataError,
+                extract_price,
+                fetch_prices_by_urls,
+            )
+            try:
+                records = await fetch_prices_by_urls(
+                    proxy_setting.bd_api_key, proxy_setting.bd_dataset_id, ozon_urls
+                )
+                for rec in records:
+                    price = extract_price(rec)
+                    if price:
+                        bd_prices.append(price)
+                bd_info = {"ok": True, "count": len(bd_prices), "error": ""}
+                all_prices.extend(bd_prices)
+            except BrightDataError as e:
+                bd_info = {"ok": False, "count": 0, "error": str(e)}
+            except Exception as e:
+                bd_info = {"ok": False, "count": 0, "error": f"Bright Data: {str(e)[:200]}"}
+    else:
+        bd_info = {"ok": False, "count": 0, "error": "Bright Data не подключено (Настройки)"}
+        if proxy_setting and proxy_setting.bd_api_key and not proxy_setting.bd_dataset_id:
+            bd_info["error"] = "Укажите Dataset ID в настройках Bright Data"
+        elif proxy_setting and not proxy_setting.bd_api_key:
+            bd_info["error"] = "Подключите Bright Data в настройках (API-ключ + Dataset ID)"
+
     analysis = analyze_prices(all_prices, bucket_size=100.0)
 
     # 3. Рекомендация
@@ -162,6 +197,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         r.marketplace: {"ok": r.ok, "count": len(r.prices), "error": r.error}
         for r in results
     }
+    source_status["bd"] = bd_info
 
     # Ссылки «открыть поиск» на маркетплейсах (для ручного просмотра)
     from urllib.parse import quote

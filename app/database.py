@@ -58,6 +58,8 @@ async def _migrate_sqlite(conn) -> None:
         },
         "proxy_settings": {
             "ozon_cookies": "TEXT DEFAULT ''",
+            "bd_api_key": "TEXT DEFAULT ''",
+            "bd_dataset_id": "TEXT DEFAULT ''",
         },
     }
     for table, columns in additions.items():

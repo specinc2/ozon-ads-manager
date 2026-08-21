@@ -130,6 +130,48 @@
                 </form>
             </div>
         </div>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Bright Data — цены Ozon (официальный API)</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Bright Data — официальный сервис сбора данных: отдаёт цены товаров Ozon
+                    напрямую (без обхода антибота). У каждого аккаунта — своё подключение.
+                </p>
+                <form method="POST" action="/settings/brightdata">
+                    <div class="mb-3">
+                        <label class="form-label">API-ключ (Bearer токен)</label>
+                        <input type="password" class="form-control" name="bd_api_key" autocomplete="off"
+                               value="{{ proxy_setting.bd_api_key if proxy_setting and proxy_setting.bd_api_key else '' }}"
+                               placeholder="9905d1e3-...">
+                        <div class="form-text">Найти: brightdata.com → панель → ваш API-ключ.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dataset ID</label>
+                        <input type="text" class="form-control" name="bd_dataset_id"
+                               value="{{ proxy_setting.bd_dataset_id if proxy_setting and proxy_setting.bd_dataset_id else '' }}"
+                               placeholder="gd_lutq85sl13rlndbzai">
+                        <div class="form-text">Найти: brightdata.com → Datasets → Ozon → ID набора данных.</div>
+                    </div>
+                    <div class="alert alert-warning py-2 small mb-3">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Не забудьте пополнить счёт Bright Data!</strong>
+                        Без активного баланса запросы не выполняются
+                        (ошибка «Customer is not active»). Пополнение: brightdata.com → Billing.
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-save"></i> Сохранить Bright Data
+                    </button>
+                </form>
+                {% if proxy_setting and proxy_setting.bd_api_key %}
+                <div class="alert alert-success mt-3 mb-0">
+                    <i class="bi bi-check-circle"></i> Bright Data подключено.
+                    Ozon-цены в анализаторе берутся через официальный API.
+                </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
     <div class="col-md-6">
         <div class="card">

@@ -485,6 +485,40 @@ async def save_proxy(request: Request, db: AsyncSession = Depends(get_db)):
     return RedirectResponse("/settings", status_code=302)
 
 
+@router.post("/settings/brightdata")
+async def save_brightdata(request: Request, db: AsyncSession = Depends(get_db)):
+    """Сохраняет подключение Bright Data для анализатора (у каждого аккаунта своё)."""
+    ctx = await _common_context(request, db)
+    user = ctx["user"]
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+
+    from app.models import ProxySetting
+
+    form = await request.form()
+    bd_api_key = (form.get("bd_api_key") or "").strip()
+    bd_dataset_id = (form.get("bd_dataset_id") or "").strip()
+
+    result = await db.execute(
+        select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
+    )
+    setting = result.scalar_one_or_none()
+    if setting is None:
+        setting = ProxySetting(user_id=user.id)
+        db.add(setting)
+
+    setting.bd_api_key = bd_api_key
+    setting.bd_dataset_id = bd_dataset_id
+    setting.updated_at = datetime.utcnow()
+    await db.commit()
+
+    if bd_api_key and bd_dataset_id:
+        flash(request, "Bright Data подключено: цены Ozon будут браться через официальный API", "success")
+    else:
+        flash(request, "Подключение Bright Data удалено", "success")
+    return RedirectResponse("/settings", status_code=302)
+
+
 @router.post("/settings/seller-keys")
 async def save_seller_keys(request: Request, db: AsyncSession = Depends(get_db)):
     ctx = await _common_context(request, db)
