@@ -20,6 +20,9 @@ logger = logging.getLogger("market_search")
 
 # Прокси для обхода антибота (например, http://user:pass@host:port)
 PROXY_URL = os.getenv("PROXY_URL", "")
+# Ozon Bridge — локальный сервер на ПК пользователя (вариант 2):
+# VDS шлёт Ozon-запросы на http://OZON_BRIDGE_URL/fetch?url=..., ПК ходит к Ozon с домашнего IP.
+OZON_BRIDGE_URL = os.getenv("OZON_BRIDGE_URL", "").rstrip("/")
 # Бесплатный сервис ScrapingAnt (до 10 000 запросов/мес): https://scrapingant.com
 SCRAPINGANT_API_KEY = os.getenv("SCRAPINGANT_API_KEY", "")
 # ScraperAPI — 1000 запросов/мес бесплатно, без карты: https://scraperapi.com
@@ -107,12 +110,29 @@ class MarketSearch:
 
     async def _fetch_with_antibot(self, url: str, **kwargs) -> httpx.Response | None:
         """Запрашивает URL, пытаясь обойти антибот:
+        0. Через Ozon Bridge (локальный сервер на ПК пользователя), если настроен
         1. Прямой запрос (с куками Ozon, если заданы)
         2. Через прокси (если задан)
         3. Через ScraperAPI / ZenRows / Crawlbase / ScrapingAnt
         """
         if not kwargs.get("headers"):
             kwargs["headers"] = {"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"}
+
+        # 0. Ozon Bridge: ПК пользователя ходит к Ozon с домашнего IP
+        if OZON_BRIDGE_URL:
+            try:
+                bridge_url = OZON_BRIDGE_URL + "/fetch?" + urllib.parse.urlencode({"url": url})
+                async with httpx.AsyncClient(timeout=35.0) as bridge_client:
+                    resp = await bridge_client.get(bridge_url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get("ok") and data.get("text"):
+                            return MockResponse(status_code=int(data.get("status", 200)),
+                                                text=data["text"])
+                        logger.warning("Ozon Bridge: %s", data.get("error", "empty"))
+            except Exception as e:
+                logger.warning("Ozon Bridge error: %s", e)
+
         # Куки Ozon из браузера пользователя — позволяют пройти JS-challenge
         if self._cookies:
             kwargs["cookies"] = self._cookies
