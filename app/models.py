@@ -357,7 +357,8 @@ class AnalyzerHistory(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     query: Mapped[str] = mapped_column(Text, default="")          # название/запрос
-    photo_url: Mapped[str] = mapped_column(Text, default="")      # загруженное фото
+    photo_url: Mapped[str] = mapped_column(Text, default="")      # первое загруженное фото
+    photo_urls_json: Mapped[str] = mapped_column(Text, default="[]")  # JSON [url, ...] все фото
     photo_prices: Mapped[str] = mapped_column(Text, default="[]") # JSON [price, ...] из выдачи
     items_json: Mapped[str] = mapped_column(Text, default="[]")   # JSON [{url, marketplace, title, price, image}]
     stats_json: Mapped[str] = mapped_column(Text, default="{}")   # JSON {total, median, mean, min, max, recommended}

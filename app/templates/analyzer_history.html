@@ -32,7 +32,13 @@
         </div>
     </div>
     <div class="card-body">
-        {% if h.photo_url %}
+        {% if h.photo_urls %}
+        <div class="mb-3 d-flex flex-wrap gap-2">
+            {% for u in h.photo_urls %}
+            <img src="{{ u }}" alt="Фото товара" class="img-thumbnail" style="max-height: 120px;">
+            {% endfor %}
+        </div>
+        {% elif h.photo_url %}
         <div class="mb-3">
             <img src="{{ h.photo_url }}" alt="Фото товара" class="img-thumbnail" style="max-height: 120px;">
         </div>

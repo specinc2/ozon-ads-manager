@@ -62,6 +62,9 @@ async def _migrate_sqlite(conn) -> None:
             "bd_dataset_id": "TEXT DEFAULT ''",
             "plugin_token": "TEXT DEFAULT ''",
         },
+        "analyzer_history": {
+            "photo_urls_json": "TEXT DEFAULT '[]'",
+        },
     }
     for table, columns in additions.items():
         result = await conn.execute(text(f"PRAGMA table_info({table})"))

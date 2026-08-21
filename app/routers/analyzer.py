@@ -73,10 +73,17 @@ async def analyzer_history(request: Request, db: AsyncSession = Depends(get_db))
             photo_prices = _json.loads(rec.photo_prices or "[]")
         except Exception:
             photo_prices = []
+        try:
+            photo_urls = _json.loads(rec.photo_urls_json or "[]")
+        except Exception:
+            photo_urls = []
+        if not photo_urls and rec.photo_url:
+            photo_urls = [rec.photo_url]
         history_items.append({
             "id": rec.id,
             "query": rec.query,
             "photo_url": rec.photo_url,
+            "photo_urls": photo_urls,
             "photo_prices": photo_prices,
             "goods": items,
             "stats": stats,
@@ -142,42 +149,60 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
     category = (form.get("category") or "").strip()
 
     photo_url = ""
+    photo_urls: list[str] = []  # все загруженные фото (публичные URL)
     photo_links: list[dict] = []
     photo_search_urls: dict[str, str] = {}
     photo_prices: list[float] = []  # цены из выдачи Яндекса по фото
 
-    # 1. Сохраняем фото и ищем по нему в Яндексе (если загружено)
-    photo = form.get("photo")
-    if photo and hasattr(photo, "filename") and photo.filename:
+    # 1. Сохраняем все фото и ищем по каждому в Яндексе
+    photos = form.getlist("photos") if hasattr(form, "getlist") else []
+    if not photos:
+        # fallback: одно поле photo (старые формы / curl)
+        single = form.get("photo")
+        if single and hasattr(single, "filename") and single.filename:
+            photos = [single]
+
+    seen_urls: set[str] = set()
+    for photo in photos:
+        if not (photo and hasattr(photo, "filename") and photo.filename):
+            continue
         try:
             data = await photo.read()
             if len(data) > MAX_PHOTO_SIZE:
-                return {"ok": False, "error": "Фото слишком большое (макс. 10 МБ)"}
+                continue  # слишком большое фото пропускаем, но не роняем поиск
             ext = (photo.filename.rsplit(".", 1)[-1] or "jpg").lower()
             if ext not in ("jpg", "jpeg", "png", "webp"):
                 ext = "jpg"
-            photo_url = save_upload(data, ext)
+            p_url = save_upload(data, ext)
+            photo_urls.append(p_url)
+            if not photo_url:
+                photo_url = p_url
 
-            # Ищем по фото
+            # Ищем по каждому фото отдельно (ошибки одного не роняют остальные)
             searcher = YandexPhotoSearch()
             try:
-                result = await searcher.search_by_url(_absolute(request, photo_url))
-                photo_links = [
-                    {"url": link.url, "marketplace": link.marketplace,
-                     "title": link.title, "price": link.price, "image": link.image}
-                    for link in result.links
-                ]
-                photo_prices = result.prices
-                photo_search_urls = result.search_urls
-                if not product_name and result.total_results:
-                    pass  # название оставляем как ввёл пользователь
+                result = await searcher.search_by_url(_absolute(request, p_url))
+                for link in result.links:
+                    if link.url not in seen_urls:
+                        seen_urls.add(link.url)
+                        photo_links.append({
+                            "url": link.url, "marketplace": link.marketplace,
+                            "title": link.title, "price": link.price, "image": link.image,
+                        })
+                # Цены из выдачи (уникальные)
+                for p in result.prices:
+                    if p not in photo_prices:
+                        photo_prices.append(p)
+                if result.search_urls and not photo_search_urls:
+                    photo_search_urls = result.search_urls
             finally:
                 await searcher.close()
         except Exception as e:
-            photo_links = []
-            # не критично — продолжаем с текстовым поиском
+            import logging
+            logging.getLogger("analyzer").warning("Ошибка поиска по фото: %s", e)
+            continue  # не критично — продолжаем с остальными фото и текстовым поиском
 
-    if not product_name and not photo_links:
+    if not product_name and not photo_links and not photo_urls:
         return {"ok": False, "error": "Укажите название товара или загрузите фото"}
 
     # 2. Поиск цен по маркетплейсам (текстовый запрос по названию)
@@ -289,6 +314,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         "ok": True,
         "product_name": product_name,
         "photo_url": photo_url,
+        "photo_urls": photo_urls,
         "photo_links": photo_links,
         "photo_prices": photo_prices,
         "photo_search_urls": photo_search_urls,
@@ -337,6 +363,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
             user_id=user.id,
             query=product_name,
             photo_url=photo_url,
+            photo_urls_json=_json.dumps(photo_urls, ensure_ascii=False),
             photo_prices=_json.dumps(photo_prices, ensure_ascii=False),
             items_json=_json.dumps(items_for_history, ensure_ascii=False),
             stats_json=_json.dumps(response["stats"], ensure_ascii=False),

@@ -25,10 +25,11 @@
             <div class="card-body">
                 <form id="analyzerForm">
                     <div class="mb-3">
-                        <label class="form-label">Фото товара (необязательно)</label>
-                        <input type="file" class="form-control" name="photo" id="photoInput" accept="image/*">
-                        <div class="form-text">Фото ищется в Яндекс.Картинках — цены похожих товаров попадут в анализ.</div>
+                        <label class="form-label">Фото товара (можно несколько)</label>
+                        <input type="file" class="form-control" name="photos" id="photoInput" accept="image/*" multiple>
+                        <div class="form-text">Каждое фото ищется в Яндекс.Картинках — чем больше ракурсов, тем точнее поиск похожих товаров и цены.</div>
                     </div>
+                    <div id="photoPreviews" class="d-flex flex-wrap gap-2 mb-3"></div>
                     <div class="mb-3">
                         <label class="form-label">Название товара *</label>
                         <input type="text" class="form-control" name="product_name" id="productName" required
@@ -127,20 +128,26 @@
 {% endblock %}
 {% block extra_scripts %}
 <script>
-// Предпросмотр фото
+// Предпросмотр нескольких фото
 document.getElementById('photoInput')?.addEventListener('change', function() {
-    const file = this.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const img = document.getElementById('photoPreviewImg');
-        img.src = e.target.result;
-        document.getElementById('photoPreview').classList.remove('d-none');
-    };
-    reader.readAsDataURL(file);
+    const box = document.getElementById('photoPreviews');
+    box.innerHTML = '';
+    const files = Array.from(this.files || []);
+    files.slice(0, 6).forEach(file => {
+        if (!file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            img.className = 'img-thumbnail';
+            img.style.cssText = 'max-height: 90px; width: auto;';
+            box.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+    });
 });
 
-// Заполняем название из названия файла (грубо)
+// Заполняем название из названия первого файла (грубо)
 document.getElementById('photoInput')?.addEventListener('change', function() {
     const file = this.files[0];
     if (!file || document.getElementById('productName').value) return;
@@ -201,11 +208,14 @@ function renderResult(data) {
     document.getElementById('resultTitle').textContent = 'Результат: ' + (data.product_name || 'по фото');
     document.getElementById('resultTotal').textContent = 'Найдено цен: ' + data.stats.total;
 
-    // Фото
-    if (data.photo_url) {
-        const img = document.getElementById('photoPreviewImg');
-        img.src = data.photo_url;
-        document.getElementById('photoPreview').classList.remove('d-none');
+    // Фото (все загруженные)
+    const photoBox = document.getElementById('photoPreview');
+    if (photoBox && (data.photo_urls?.length || data.photo_url)) {
+        const urls = data.photo_urls && data.photo_urls.length ? data.photo_urls : [data.photo_url];
+        photoBox.innerHTML = urls.map(u =>
+            `<img src="${u}" class="img-thumbnail me-2" style="max-height: 140px;" alt="Фото товара">`
+        ).join('');
+        photoBox.classList.remove('d-none');
     }
 
     // Источники
