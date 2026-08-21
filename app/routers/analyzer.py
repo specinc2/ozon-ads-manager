@@ -270,9 +270,14 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 def _absolute(request: Request, path: str) -> str:
-    """Превращает относительный путь фото в абсолютный URL."""
-    base = str(request.base_url).rstrip("/")
-    return f"{base}{path}"
+    """Превращает относительный путь фото в абсолютный публичный URL.
+
+    Учитывает reverse-proxy (nginx): берём домен из заголовка Host/X-Forwarded-Proto,
+    чтобы Яндекс мог открыть фото по внешнему адресу (не http://127.0.0.1:8002/).
+    """
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.hostname
+    return f"{scheme}://{host}{path}"
 
 
 def _float(value, default: float = 0.0) -> float:
