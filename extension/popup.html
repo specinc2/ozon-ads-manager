@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Ozon Price Helper</title>
+  <style>
+    body { width: 320px; font-family: system-ui, sans-serif; font-size: 13px; padding: 12px; }
+    h3 { margin: 0 0 8px; font-size: 15px; }
+    label { display: block; margin: 8px 0 4px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+    button { margin-top: 10px; width: 100%; padding: 8px; background: #005bff; color: #fff;
+             border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    button:hover { background: #0047c4; }
+    .status { margin-top: 8px; color: #0a7d32; }
+    .hint { color: #666; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <h3>Ozon Price Helper</h3>
+  <label>Токен плагина</label>
+  <input type="text" id="token" placeholder="Вставьте токен из Настроек сайта">
+  <button id="save">Сохранить</button>
+  <div class="status" id="status"></div>
+  <div class="hint">
+    Токен можно получить в личном кабинете: Настройки → «Плагин браузера».
+    Плагин автоматически отправляет цену и страну поставки (РФ/Китай) при открытии карточки Ozon.
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
