@@ -28,5 +28,12 @@ class Settings(BaseSettings):
     # Ozon Performance API
     ozon_base_url: str = "https://api-performance.ozon.ru"
 
+    # CSRF: разрешённые хосты (через запятую)
+    csrf_allowed_hosts: list[str] = [
+        "searx.dungeonverse.ru", "dungeonverse.ru",
+        "127.0.0.1:8002", "127.0.0.1:8000", "127.0.0.1:8001",
+        "localhost:8002", "localhost:8000", "localhost:8001",
+    ]
+
 
 settings = Settings()

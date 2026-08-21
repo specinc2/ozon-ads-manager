@@ -6,9 +6,12 @@
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings, BASE_DIR
@@ -19,6 +22,39 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """Защита от CSRF: проверяет Origin/Referer для мутирующих запросов.
+
+    Браузер всегда шлёт Origin (fetch) или Referer (форма). Если запрос пришёл
+    с чужого сайта — Origin/Referer будет чужим, и мы его отклоняем.
+    Запросы без Origin/Referer (curl, внутренние) пропускаем.
+    """
+
+    def _is_allowed(self, request) -> bool:
+        origin = request.headers.get("origin") or ""
+        referer = request.headers.get("referer") or ""
+        if not origin and not referer:
+            return True  # нет Origin/Referer — curl/скрипт, не браузер
+        for value in (origin, referer):
+            if not value:
+                continue
+            try:
+                host = urlparse(value).netloc
+            except Exception:
+                continue
+            if not host:
+                continue
+            if host in settings.csrf_allowed_hosts or host.endswith(".dungeonverse.ru"):
+                return True
+        return False
+
+    async def dispatch(self, request, call_next):
+        if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+            if not self._is_allowed(request):
+                return JSONResponse({"error": "CSRF check failed"}, status_code=403)
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -45,6 +81,8 @@ app = FastAPI(
 
 # SessionMiddleware для flash-сообщений и хранения данных в подписанной cookie
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
+# CSRF-защита: отклоняет POST/PUT/DELETE с чужого Origin/Referer
+app.add_middleware(CSRFMiddleware)
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
