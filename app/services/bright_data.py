@@ -64,12 +64,18 @@ async def fetch_prices_by_urls(
 
         data = resp.json()
 
-        # 2. Если готово сразу (список записей) — возвращаем
+        # 2. Если готово сразу:
+        #    - список записей
+        #    - одиночный dict с данными товара (url/sku/name)
         if isinstance(data, list):
             return data[:limit]
+        if isinstance(data, dict) and "snapshot_id" not in data:
+            # Одиночная запись товара (API вернул её напрямую)
+            if data.get("url") or data.get("sku") or data.get("name"):
+                return [data]
 
         # 3. Иначе — ждём готовности snapshot
-        snapshot_id = data.get("snapshot_id")
+        snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
         if not snapshot_id:
             return []
 
