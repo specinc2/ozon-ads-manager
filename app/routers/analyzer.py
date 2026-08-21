@@ -26,9 +26,17 @@ async def analyzer_page(request: Request, db: AsyncSession = Depends(get_db)):
 
     # Подставляем средние значения из Seller API (реальные комиссии/логистика продавца)
     defaults = await get_seller_defaults(db, user.id)
+
+    # Проверяем, подключён ли Bright Data (для точных цен Ozon)
+    from app.models import ProxySetting
+    proxy_result = await db.execute(
+        select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
+    )
+    proxy_setting = proxy_result.scalar_one_or_none()
+
     return templates.TemplateResponse("analyzer.html", {
         "request": request, "user": user, "flashes": [],
-        "defaults": defaults,
+        "defaults": defaults, "proxy_setting": proxy_setting,
     })
 
 
@@ -86,6 +94,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
     photo_url = ""
     photo_links: list[dict] = []
     photo_search_urls: dict[str, str] = {}
+    photo_prices: list[float] = []  # цены из выдачи Яндекса по фото
 
     # 1. Сохраняем фото и ищем по нему в Яндексе (если загружено)
     photo = form.get("photo")
@@ -104,9 +113,11 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
             try:
                 result = await searcher.search_by_url(_absolute(request, photo_url))
                 photo_links = [
-                    {"url": link.url, "marketplace": link.marketplace, "title": link.title}
+                    {"url": link.url, "marketplace": link.marketplace,
+                     "title": link.title, "price": link.price}
                     for link in result.links
                 ]
+                photo_prices = result.prices
                 photo_search_urls = result.search_urls
                 if not product_name and result.total_results:
                     pass  # название оставляем как ввёл пользователь
@@ -145,7 +156,13 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         if r.ok and r.prices:
             all_prices.extend(p.price for p in r.prices)
 
-    # 2b. Bright Data: официальные цены Ozon по URL карточек
+    # 2a. Цены из выдачи Яндекса по фото (если фото загружено)
+    yandex_photo_info: dict = {"ok": False, "count": 0, "error": ""}
+    if photo_prices:
+        all_prices.extend(photo_prices)
+        yandex_photo_info = {"ok": True, "count": len(photo_prices), "error": ""}
+
+    # 2b. Bright Data: официальные цены Ozon по URL карточек из фото-поиска
     bd_prices: list[float] = []
     bd_info: dict = {"ok": False, "count": 0, "error": ""}
     if proxy_setting and proxy_setting.bd_api_key and proxy_setting.bd_dataset_id:
@@ -179,7 +196,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
                 bd_info = {"ok": False, "count": 0, "error": f"Bright Data: {str(e)[:200]}"}
         else:
             bd_info = {"ok": False, "count": 0,
-                       "error": "Нет URL товаров Ozon. Вставьте ссылку на карточку Ozon или найдите товар по фото."}
+                       "error": "Нет URL товаров Ozon. Найдите товар по фото или вставьте ссылку на карточку Ozon."}
     else:
         bd_info = {"ok": False, "count": 0, "error": "Bright Data не подключено (Настройки)"}
         if proxy_setting and proxy_setting.bd_api_key and not proxy_setting.bd_dataset_id:
@@ -206,6 +223,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         for r in results
     }
     source_status["bd"] = bd_info
+    source_status["yandex_photo"] = yandex_photo_info
 
     # Ссылки «открыть поиск» на маркетплейсах (для ручного просмотра)
     from urllib.parse import quote
@@ -222,6 +240,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
         "product_name": product_name,
         "photo_url": photo_url,
         "photo_links": photo_links,
+        "photo_prices": photo_prices,
         "photo_search_urls": photo_search_urls,
         "market_search_urls": market_search_urls,
         "sources": source_status,
