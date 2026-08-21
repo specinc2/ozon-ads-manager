@@ -44,7 +44,7 @@ async def fetch_prices_by_urls(
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"input": [{"url": u, "country": ""} for u in urls], "limit_per_input": None}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         # 1. Запускаем сбор данных
         resp = await client.post(
             API_BASE,
