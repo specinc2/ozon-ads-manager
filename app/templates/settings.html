@@ -5,9 +5,14 @@
 
 <div class="row">
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">API-ключи Ozon Performance</h5>
+                {% if api_keys %}
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Подключено</span>
+                {% else %}
+                <span class="badge bg-secondary">Не подключено</span>
+                {% endif %}
             </div>
             <div class="card-body">
                 <p class="text-muted small">
@@ -17,15 +22,18 @@
                 <form method="POST" action="/settings/keys">
                     <div class="mb-3">
                         <label class="form-label">Название (для себя)</label>
-                        <input type="text" class="form-control" name="name" value="Основные ключи">
+                        <input type="text" class="form-control" name="name" value="Основные ключи"
+                               placeholder="Например: рекламный кабинет">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Client-Id</label>
-                        <input type="text" class="form-control" name="client_id" required autocomplete="off">
+                        <input type="text" class="form-control" name="client_id" required autocomplete="off"
+                               placeholder="{% if api_keys %}{{ key_infos[0].client_id_masked }} (заполнено - введите новый для замены){% else %}Введите Client-Id{% endif %}">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Client-Secret</label>
-                        <input type="password" class="form-control" name="client_secret" required autocomplete="off">
+                        <input type="password" class="form-control" name="client_secret" required autocomplete="off"
+                               placeholder="{% if api_keys %}•••••••• (заполнено - введите новый для замены){% else %}Введите Client-Secret{% endif %}">
                     </div>
                     <button type="submit" class="btn btn-primary w-100">
                         <i class="bi bi-plus-lg"></i> Добавить и проверить
@@ -36,28 +44,32 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Seller API (данные из ЛК: остатки, цены, комиссии)</h5>
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Seller API (остатки, цены, комиссии)</h5>
+                {% if has_seller_keys %}
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Подключено</span>
+                {% else %}
+                <span class="badge bg-secondary">Не подключено</span>
+                {% endif %}
             </div>
             <div class="card-body">
                 <p class="text-muted small">
-                    Эти ключи позволяют автоматически подтягивать экономику товаров:
-                    остатки, цены, комиссии маркетплейса, логистику, эквайринг,
-                    участие в акциях и % выкупа. Получить ключи:
-                    <a href="https://seller.ozon.ru/app/settings/api-keys" target="_blank">Настройки → API-ключи в ЛК Ozon</a>.
+                    Автоматически подтягивает экономику: остатки, цены, комиссии,
+                    логистику, эквайринг, акции, % выкупа.
+                    <a href="https://seller.ozon.ru/app/settings/api-keys" target="_blank">Получить ключи</a>.
                 </p>
                 <form method="POST" action="/settings/seller-keys">
                     <div class="mb-3">
                         <label class="form-label">Client-Id (Seller API)</label>
-                        <input type="text" class="form-control" name="seller_client_id" autocomplete="off">
+                        <input type="text" class="form-control" name="seller_client_id" autocomplete="off"
+                               placeholder="{% if has_seller_keys %}•••••••• (заполнено - введите новый для замены){% else %}Введите Client-Id{% endif %}">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Api-Key (Seller API)</label>
-                        <input type="password" class="form-control" name="seller_api_key" autocomplete="off">
+                        <input type="password" class="form-control" name="seller_api_key" autocomplete="off"
+                               placeholder="{% if has_seller_keys %}•••••••• (заполнено - введите новый для замены){% else %}Введите Api-Key{% endif %}">
                     </div>
                     <button type="submit" class="btn btn-primary w-100">
                         <i class="bi bi-save"></i> Сохранить ключи
@@ -66,78 +78,28 @@
                 {% if has_seller_keys %}
                 <div class="alert alert-success mt-3 mb-0">
                     <i class="bi bi-check-circle"></i> Ключи Seller API подключены.
-                    Синхронизация выполняется автоматически планировщиком.
                 </div>
                 {% endif %}
             </div>
         </div>
     </div>
-</div>
 
-<div class="row mt-4">
     <div class="col-md-6">
         <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Прокси для анализатора цен</h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Bright Data — цены Ozon</h5>
+                {% if proxy_setting and proxy_setting.bd_api_key and proxy_setting.bd_dataset_id %}
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Подключено</span>
+                {% elif proxy_setting and proxy_setting.bd_api_key %}
+                <span class="badge bg-warning text-dark">Нет Dataset ID</span>
+                {% else %}
+                <span class="badge bg-secondary">Не подключено</span>
+                {% endif %}
             </div>
             <div class="card-body">
                 <p class="text-muted small">
-                    Прокси используется для парсинга цен на Ozon/AliExpress (обход антибота).
-                    Укажите срок действия, чтобы видеть, сколько дней осталось.
-                </p>
-                <form method="POST" action="/settings/proxy">
-                    <div class="mb-3">
-                        <label class="form-label">Прокси (http://user:pass@ip:port)</label>
-                        <input type="text" class="form-control" name="proxy_url"
-                               value="{{ proxy_setting.proxy_url if proxy_setting else '' }}"
-                               placeholder="http://логин:пароль@ip:порт">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Срок действия до (необязательно)</label>
-                        <input type="date" class="form-control" name="expires_at"
-                               value="{{ proxy_setting.expires_at.isoformat() if proxy_setting and proxy_setting.expires_at else '' }}">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Куки Ozon (из Network — полный Cookie-заголовок)</label>
-                        <textarea class="form-control" name="ozon_cookies" rows="3"
-                                  placeholder='abt_data=7.xxx...; __Secure-access-token=xxx; xcid=xxx; rfuid=xxx'>{{ proxy_setting.ozon_cookies if proxy_setting and proxy_setting.ozon_cookies else '' }}</textarea>
-                        <div class="form-text">
-                            <strong>Как получить куки из Network (1 минута, правильный способ):</strong><br>
-                            1. Отключите VPN и откройте <code>https://www.ozon.ru</code> в браузере — дождитесь полной загрузки.<br>
-                            2. Нажмите <strong>F12</strong> → вкладка <strong>«Сеть/Network»</strong> → <strong>обновите страницу (F5)</strong> → кликните <strong>первый запрос</strong> → вкладка <strong>«Заголовки/Headers»</strong> → раздел <strong>«Request Headers»</strong> → найдите строку <strong>«Cookie:»</strong> → выделите и скопируйте <strong>всё значение после «Cookie:»</strong> (длинная строка вида <code>abt_data=7.xxx; __Secure-access-token=xxx; xcid=xxx; rfuid=xxx; _ozon_session=xxx</code>).<br>
-                            3. <strong>Вставьте эту строку целиком</strong> в поле выше и нажмите «Сохранить прокси».<br>
-                            <span class="text-danger small"><i class="bi bi-exclamation-triangle"></i> Важно: копируйте из Network, а не из Application. Куки из Application по одной часто не работают — нужны все сразу как единый Cookie-заголовок.</span>
-                        </div>
-                    </div>
-                    {% if proxy_setting and proxy_setting.proxy_url %}
-                    <div class="alert {% if proxy_setting.days_left is not none and proxy_setting.days_left < 7 %}alert-warning{% else %}alert-success{% endif %} py-2 small">
-                        {% if proxy_setting.days_left is not none %}
-                            {% if proxy_setting.days_left < 0 %}
-                            <i class="bi bi-exclamation-triangle"></i> Прокси истёк {{ -proxy_setting.days_left }} дн. назад — обновите срок.
-                            {% elif proxy_setting.days_left == 0 %}
-                            <i class="bi bi-exclamation-triangle"></i> Прокси истекает сегодня.
-                            {% else %}
-                            <i class="bi bi-check-circle"></i> Осталось дней: <strong>{{ proxy_setting.days_left }}</strong>
-                            {% endif %}
-                        {% else %}
-                        <i class="bi bi-info-circle"></i> Срок действия не указан.
-                        {% endif %}
-                    </div>
-                    {% endif %}
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-save"></i> Сохранить прокси
-                    </button>
-                </form>
-            </div>
-        </div>
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Bright Data — цены Ozon (официальный API)</h5>
-            </div>
-            <div class="card-body">
-                <p class="text-muted small">
-                    Bright Data — официальный сервис сбора данных: отдаёт цены товаров Ozon
-                    напрямую (без обхода антибота). У каждого аккаунта — своё подключение.
+                    Официальный API цен Ozon (без обхода антибота). Цены по URL карточки товара
+                    в анализаторе. У каждого аккаунта — своё подключение.
                 </p>
                 <form method="POST" action="/settings/brightdata">
                     <div class="mb-3">
@@ -145,26 +107,26 @@
                         <input type="password" class="form-control" name="bd_api_key" autocomplete="off"
                                value="{{ proxy_setting.bd_api_key if proxy_setting and proxy_setting.bd_api_key else '' }}"
                                placeholder="9905d1e3-...">
-                        <div class="form-text">Найти: brightdata.com → панель → ваш API-ключ.</div>
+                        <div class="form-text">brightdata.com → панель → API-ключ.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Dataset ID</label>
                         <input type="text" class="form-control" name="bd_dataset_id"
                                value="{{ proxy_setting.bd_dataset_id if proxy_setting and proxy_setting.bd_dataset_id else '' }}"
                                placeholder="gd_lutq85sl13rlndbzai">
-                        <div class="form-text">Найти: brightdata.com → Datasets → Ozon → ID набора данных.</div>
+                        <div class="form-text">brightdata.com → Datasets → Ozon → ID набора.</div>
                     </div>
                     <div class="alert alert-warning py-2 small mb-3">
                         <i class="bi bi-exclamation-triangle"></i>
                         <strong>Не забудьте пополнить счёт Bright Data!</strong>
                         Без активного баланса запросы не выполняются
-                        (ошибка «Customer is not active»). Пополнение: brightdata.com → Billing.
+                        (ошибка «Customer is not active»).
                     </div>
                     <button type="submit" class="btn btn-primary w-100">
                         <i class="bi bi-save"></i> Сохранить Bright Data
                     </button>
                 </form>
-                {% if proxy_setting and proxy_setting.bd_api_key %}
+                {% if proxy_setting and proxy_setting.bd_api_key and proxy_setting.bd_dataset_id %}
                 <div class="alert alert-success mt-3 mb-0">
                     <i class="bi bi-check-circle"></i> Bright Data подключено.
                     Ozon-цены в анализаторе берутся через официальный API.
@@ -172,11 +134,10 @@
                 {% endif %}
             </div>
         </div>
-    </div>
-    <div class="col-md-6">
+
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0">Подключённые ключи</h5>
+                <h5 class="card-title mb-0">Подключённые ключи Ozon API</h5>
             </div>
             <div class="card-body">
                 {% if api_keys %}
@@ -195,7 +156,6 @@
                             {% endif %}
                             <div class="text-muted small">
                                 Client-Id: <code>{{ k.client_id_masked }}</code>
-                                · ID: {{ k.id }}
                                 {% if k.last_verified_at %}
                                 · проверен {{ k.last_verified_at|msk }}
                                 {% endif %}
@@ -222,7 +182,7 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="text-muted mb-0">Ключи не добавлены.</p>
+                <p class="text-muted mb-0">Ключи не добавлены. Создайте их в блоке выше.</p>
                 {% endif %}
             </div>
         </div>
