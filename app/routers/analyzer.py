@@ -78,7 +78,7 @@ async def analyzer_history(request: Request, db: AsyncSession = Depends(get_db))
             "query": rec.query,
             "photo_url": rec.photo_url,
             "photo_prices": photo_prices,
-            "items": items,
+            "goods": items,
             "stats": stats,
             "ts": rec.ts,
             "total": len(items),
