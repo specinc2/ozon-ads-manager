@@ -164,7 +164,7 @@ async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
                 result = await searcher.search_by_url(_absolute(request, photo_url))
                 photo_links = [
                     {"url": link.url, "marketplace": link.marketplace,
-                     "title": link.title, "price": link.price}
+                     "title": link.title, "price": link.price, "image": link.image}
                     for link in result.links
                 ]
                 photo_prices = result.prices
