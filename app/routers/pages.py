@@ -653,27 +653,20 @@ async def logs_page(request: Request, db: AsyncSession = Depends(get_db)):
 # Товары
 # ------------------------------------------------------------------
 
-@router.get("/products")
-async def products_page(request: Request, db: AsyncSession = Depends(get_db)):
-    ctx = await _common_context(request, db)
-    user = ctx["user"]
-    if not user:
-        return RedirectResponse("/login", status_code=302)
-
-    # Все ProductInfo (экономика) — все товары из ЛК, а не только рекламные
+async def _collect_product_cards(db: AsyncSession, user_id: int) -> list[dict]:
+    """Собирает карточки товаров с экономикой и рекламной статистикой (30 дней)."""
     from datetime import date, timedelta
     cutoff = date.today() - timedelta(days=30)
 
     from sqlalchemy import func
     from app.models import CampaignStat, Product, Campaign
+    from app.services.economics import calculate, from_info
 
-    # Все товары из каталога (ProductInfo)
     result = await db.execute(
-        select(ProductInfo).where(ProductInfo.user_id == user.id).order_by(ProductInfo.name)
+        select(ProductInfo).where(ProductInfo.user_id == user_id).order_by(ProductInfo.name)
     )
     all_infos = list(result.scalars().all())
 
-    # Рекламная статистика по SKU (агрегированная за 30 дней по всем кампаниям)
     ad_stats_rows = await db.execute(
         select(
             Product.sku,
@@ -685,20 +678,16 @@ async def products_page(request: Request, db: AsyncSession = Depends(get_db)):
         ).select_from(Product)
         .join(CampaignStat, CampaignStat.campaign_id == Product.campaign_id)
         .join(Campaign, Campaign.id == Product.campaign_id)
-        .where(Campaign.user_id == user.id, CampaignStat.stat_date >= cutoff)
+        .where(Campaign.user_id == user_id, CampaignStat.stat_date >= cutoff)
         .group_by(Product.sku)
     )
     ad_stats: dict[str, tuple] = {}
     for row in ad_stats_rows:
-        sku = str(row[0])
-        ad_stats[sku] = (float(row[1]), float(row[2]), int(row[3]), int(row[4]), int(row[5]))
+        ad_stats[str(row[0])] = (float(row[1]), float(row[2]), int(row[3]), int(row[4]), int(row[5]))
 
-    # Собираем карточки с экономикой
-    from app.services.economics import calculate, from_info
     card_list = []
     for info in all_infos:
         econ = from_info(info, sku=info.sku, name=info.name or "")
-        # Рекламная статистика
         stats = ad_stats.get(info.sku, (0, 0, 0, 0, 0))
         econ.ad_spend = stats[0]
         econ.ad_revenue = stats[1]
@@ -708,15 +697,12 @@ async def products_page(request: Request, db: AsyncSession = Depends(get_db)):
         if econ.monthly_revenue <= 0:
             econ.total_revenue = econ.ad_revenue
         calculate(econ)
-
-        # Низкая посещаемость (по рекламным показам)
         econ.low_traffic = bool(impressions < 100 and stats[2] < 5)
 
-        # Кампании, в которых участвует товар (для информации)
         camp_result = await db.execute(
             select(Campaign.title).select_from(Product)
             .join(Campaign, Campaign.id == Product.campaign_id)
-            .where(Campaign.user_id == user.id, Product.sku == info.sku)
+            .where(Campaign.user_id == user_id, Product.sku == info.sku)
             .distinct()
         )
         campaign_titles = [r[0] for r in camp_result.all()]
@@ -729,8 +715,17 @@ async def products_page(request: Request, db: AsyncSession = Depends(get_db)):
             "campaign_titles": ", ".join(campaign_titles[:3]) + ("…" if len(campaign_titles) > 3 else ""),
             "in_ad": bool(campaign_titles),
         })
+    return card_list
 
-    ctx["cards"] = card_list
+
+@router.get("/products")
+async def products_page(request: Request, db: AsyncSession = Depends(get_db)):
+    ctx = await _common_context(request, db)
+    user = ctx["user"]
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+
+    ctx["cards"] = await _collect_product_cards(db, user.id)
     ctx["campaigns"] = await get_campaigns(db, user.id)
 
     # Подключены ли ключи Seller API (для кнопки синхронизации)
@@ -739,6 +734,23 @@ async def products_page(request: Request, db: AsyncSession = Depends(get_db)):
     )).scalars().all()
     ctx["has_seller_keys"] = any(k.seller_client_id_enc and k.seller_api_key_enc for k in seller_keys)
     return templates.TemplateResponse("products.html", ctx)
+
+
+@router.get("/products/abc")
+async def products_abc_page(request: Request, db: AsyncSession = Depends(get_db)):
+    """ABC-анализ товаров: вклад в выручку + кто жжёт рекламу."""
+    ctx = await _common_context(request, db)
+    user = ctx["user"]
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+
+    from app.services.abc_analysis import analyze
+    cards = await _collect_product_cards(db, user.id)
+    abc = analyze(cards)
+
+    ctx["abc"] = abc
+    ctx["rows"] = abc.rows
+    return templates.TemplateResponse("products_abc.html", ctx)
 
 
 # ------------------------------------------------------------------

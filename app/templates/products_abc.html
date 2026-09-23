@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}ABC-анализ — Ozon Ads Manager{% endblock %}
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-graph-up-arrow"></i> ABC-анализ товаров</h1>
+
+<p class="text-muted">
+    Группы по вкладу в выручку за 30 дней: <b class="text-success">A</b> — первые 80% оборота,
+    <b class="text-warning">B</b> — следующие 15%, <b class="text-secondary">C</b> — хвост.
+    Красная метка 🔥 — реклама дороже допустимой (ДРР выше маржинальности).
+</p>
+
+<!-- Сводка -->
+<div class="row mb-4">
+    {% set g = abc.groups.get('A', {}) %}
+    <div class="col-md-3">
+        <div class="card text-bg-success h-100">
+            <div class="card-body py-3">
+                <h6 class="card-title mb-1">Группа A — звёзды</h6>
+                <div class="fs-4">{{ g.count }} товаров</div>
+                <small>оборот: {{ "%.0f"|format(g.revenue) }} ₽ · жгут: {{ g.burn }}</small>
+            </div>
+        </div>
+    </div>
+    {% set g = abc.groups.get('B', {}) %}
+    <div class="col-md-3">
+        <div class="card text-bg-warning h-100">
+            <div class="card-body py-3">
+                <h6 class="card-title mb-1">Группа B — середина</h6>
+                <div class="fs-4">{{ g.count }} товаров</div>
+                <small>оборот: {{ "%.0f"|format(g.revenue) }} ₽ · жгут: {{ g.burn }}</small>
+            </div>
+        </div>
+    </div>
+    {% set g = abc.groups.get('C', {}) %}
+    <div class="col-md-3">
+        <div class="card text-bg-secondary h-100">
+            <div class="card-body py-3">
+                <h6 class="card-title mb-1">Группа C — хвост</h6>
+                <div class="fs-4">{{ g.count }} товаров</div>
+                <small>оборот: {{ "%.0f"|format(g.revenue) }} ₽ · жгут: {{ g.burn }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card {% if abc.burn_count %}text-bg-danger{% else %}text-bg-light border{% endif %} h-100">
+            <div class="card-body py-3">
+                <h6 class="card-title mb-1">🔥 Жгут рекламу</h6>
+                <div class="fs-4">{{ abc.burn_count }} товаров</div>
+                <small>перерасход: {{ "%.0f"|format(abc.overspend_total) }} ₽/мес</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body py-2 d-flex flex-wrap gap-4 small">
+                <span>Оборот за 30 дней: <strong>{{ "%.0f"|format(abc.total_revenue) }} ₽</strong></span>
+                <span>Расход на рекламу: <strong>{{ "%.0f"|format(abc.total_ad_spend) }} ₽</strong></span>
+                <span>Валовая маржа (оценка): <strong>{{ "%.0f"|format(abc.total_margin) }} ₽</strong></span>
+                <a href="/api/products/abc/export" class="btn btn-outline-success btn-sm ms-auto">
+                    <i class="bi bi-filetype-csv"></i> Экспорт CSV
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Таблица -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Все товары ({{ rows|length }})</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="abcTable">
+                <thead>
+                    <tr>
+                        <th>Группа</th>
+                        <th>Товар</th>
+                        <th class="text-end">Оборот, ₽</th>
+                        <th class="text-end">Накопл. %</th>
+                        <th class="text-end">Расход, ₽</th>
+                        <th class="text-end">ДРР</th>
+                        <th class="text-end">Лимит ДРР</th>
+                        <th class="text-end">Маржа %</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr class="{% if r.burn %}table-danger{% endif %}">
+                        <td>
+                            {% if r.group == 'A' %}<span class="badge bg-success">A</span>
+                            {% elif r.group == 'B' %}<span class="badge bg-warning text-dark">B</span>
+                            {% elif r.group == 'C' %}<span class="badge bg-secondary">C</span>
+                            {% else %}<span class="badge bg-light text-dark border">—</span>{% endif %}
+                        </td>
+                        <td>
+                            <div class="text-truncate" style="max-width: 320px;" title="{{ r.name }}">{{ r.name }}</div>
+                            <small class="text-muted">SKU: {{ r.sku }}{% if r.in_ad %} · в рекламе{% endif %}</small>
+                        </td>
+                        <td class="text-end">{{ "%.0f"|format(r.revenue) if r.revenue else "—" }}</td>
+                        <td class="text-end text-muted">{{ "%.1f"|format(r.cum_pct) if r.cum_pct else "—" }}</td>
+                        <td class="text-end">{{ "%.0f"|format(r.ad_spend) if r.ad_spend else "—" }}</td>
+                        <td class="text-end {% if r.burn %}text-danger fw-bold{% endif %}">
+                            {{ "%.1f%%"|format(r.drr) if r.drr else "—" }}
+                        </td>
+                        <td class="text-end text-muted">{{ "%.1f%%"|format(r.drr_limit) if r.drr_limit is not none else "—" }}</td>
+                        <td class="text-end">{{ "%.1f%%"|format(r.margin_pct) if r.margin_pct else "—" }}</td>
+                        <td>
+                            {% if r.burn %}<span class="badge bg-danger" title="Перерасход {{ '%.0f'|format(r.overspend) }} ₽/мес">🔥 {{ r.overspend|round|int }} ₽</span>{% endif %}
+                            <span class="small text-muted d-block">{{ r.verdict }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Фильтр по группе через поиск
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.createElement('input');
+    input.className = 'form-control form-control-sm mb-2';
+    input.placeholder = 'Фильтр по названию/SKU…';
+    const table = document.getElementById('abcTable');
+    table.parentElement.parentElement.prepend(input);
+    input.addEventListener('input', () => {
+        const q = input.value.toLowerCase();
+        table.querySelectorAll('tbody tr').forEach(tr => {
+            tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    });
+});
+</script>
+{% endblock %}

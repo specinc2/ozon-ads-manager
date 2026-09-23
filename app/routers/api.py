@@ -541,6 +541,44 @@ async def export_products_csv(
     )
 
 
+@router.get("/products/abc/export")
+async def export_abc_csv(
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Экспорт ABC-анализа товаров в CSV."""
+    from app.routers.pages import _collect_product_cards
+    from app.services.abc_analysis import analyze
+    from app.services.csv_export import csv_response
+
+    cards = await _collect_product_cards(db, user.id)
+    abc = analyze(cards)
+    return csv_response(
+        [
+            {
+                "Группа": r.group,
+                "Товар": r.name,
+                "SKU": r.sku,
+                "Оборот ₽": r.revenue,
+                "Накопл %": r.cum_pct,
+                "Расход ₽": r.ad_spend,
+                "ДРР %": r.drr,
+                "Лимит ДРР %": r.drr_limit,
+                "Маржа %": r.margin_pct,
+                "Жжёт рекламу": "ДА" if r.burn else "",
+                "Перерасход ₽/мес": r.overspend,
+                "В рекламе": "Да" if r.in_ad else "",
+                "Рекомендация": r.verdict,
+            }
+            for r in abc.rows
+        ],
+        fieldnames=["Группа", "Товар", "SKU", "Оборот ₽", "Накопл %", "Расход ₽",
+                     "ДРР %", "Лимит ДРР %", "Маржа %", "Жжёт рекламу",
+                     "Перерасход ₽/мес", "В рекламе", "Рекомендация"],
+        filename="abc_analysis.csv",
+    )
+
+
 # ------------------------------------------------------------------
 # PDF-этикетки со штрихкодом (58×40 мм)
 # ------------------------------------------------------------------
