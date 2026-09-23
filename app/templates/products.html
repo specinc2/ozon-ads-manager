@@ -341,7 +341,8 @@ async function aiImprove(sku, btn) {
                 </div>
                 <textarea class="form-control" rows="3" readonly>${(data.keywords || []).join(', ')}</textarea>
             </div>
-            <div class="text-muted small">Было: «${(data.current_name || '').slice(0, 80)}…»</div>`;
+            <div class="text-muted small">Было: «${(data.current_name || '').slice(0, 80)}…»
+                ${data.model ? `<br>Модель: <code>${data.model}</code>` : ''}</div>`;
     } catch (e) {
         body.innerHTML = `<div class="alert alert-danger mb-0">Сеть: ${e.message}</div>`;
     } finally {
