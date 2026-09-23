@@ -326,15 +326,20 @@ async function aiImprove(sku, btn, mode = 'card') {
             const blocks = (data.rich.content || []).length;
             body.innerHTML = `
                 <div class="alert alert-success py-2 small"><i class="bi bi-check-circle"></i>
-                    Готово: ${blocks} блоков Rich-контента. Вставьте JSON в карточку Ozon
-                    (ЛК → товар → описание → Rich Content → JSON).
+                    Готово: ${blocks} блоков Rich-контента.
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <strong>Rich Content JSON (Ozon)</strong>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="copyField(this)">Копировать JSON</button>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="copyField(this)">Копировать JSON</button>
+                        <button class="btn btn-sm btn-success" onclick="publishRich('${data.sku}', this)">
+                            <i class="bi bi-cloud-upload"></i> Опубликовать в Ozon
+                        </button>
+                    </div>
                 </div>
-                <textarea class="form-control font-monospace" style="font-size: 12px;" rows="16" readonly>${richStr}</textarea>
-                <div class="text-muted small mt-2">Модель: <code>${data.model}</code></div>`;
+                <textarea id="richJsonArea" class="form-control font-monospace" style="font-size: 12px;" rows="16" readonly>${richStr}</textarea>
+                <div class="text-muted small mt-2">Модель: <code>${data.model}</code>
+                    · Кнопка «Опубликовать» перезапишет описание товара на Ozon.</div>`;
             return;
         }
         body.innerHTML = `
@@ -380,6 +385,36 @@ function copyField(btn) {
         btn.textContent = '✓ Скопировано';
         setTimeout(() => btn.textContent = 'Копировать', 1500);
     });
+}
+
+async function publishRich(sku, btn) {
+    if (!confirm('Опубликовать Rich-контент в товар на Ozon?\nТекущее описание будет ЗАМЕНЕНО.')) return;
+    const ta = document.getElementById('richJsonArea');
+    if (!ta) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Публикация…';
+    try {
+        const resp = await fetch(`/api/products/${sku}/ai-rich/publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rich: JSON.parse(ta.value) }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.ok) {
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Опубликовано!';
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-success');
+        } else {
+            btn.innerHTML = '<i class="bi bi-x-lg"></i> Ошибка';
+            alert('Ozon отклонил: ' + (data.detail || JSON.stringify(data.ozon_response || '').slice(0, 200)));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-cloud-upload"></i> Опубликовать в Ozon';
+        }
+    } catch (e) {
+        alert('Сеть: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload"></i> Опубликовать в Ozon';
+    }
 }
 </script>
 

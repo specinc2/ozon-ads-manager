@@ -205,6 +205,28 @@ class SellerClient:
         return result
 
     # ------------------------------------------------------------------
+    # Обновление описания (Rich Content)
+    # ------------------------------------------------------------------
+
+    async def update_description(
+        self, product_id: int | str, description: str,
+        rich_content_json: dict | None = None,
+    ) -> dict:
+        """POST /v4/product/info/description — обновить описание и Rich Content.
+
+        product_id — Ozon SKU товара.
+        rich_content_json — Rich Content JSON ({"content": [...], "version": 0.3}).
+        Возвращает ответ Ozon (обычно {"result": [...]}).
+        """
+        body: dict = {
+            "product_id": int(product_id),
+            "description": description[:6000],
+        }
+        if rich_content_json:
+            body["rich_content_json"] = rich_content_json
+        return await self._request("POST", "/v4/product/info/description", body)
+
+    # ------------------------------------------------------------------
     # Аналитика: выкупы, продажи, заказы за месяц
     # ------------------------------------------------------------------
 
