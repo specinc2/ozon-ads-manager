@@ -152,6 +152,10 @@
                                 onclick="openDetails(this)">
                             <i class="bi bi-sliders"></i>
                         </button>
+                        <button class="btn btn-outline-success" title="Улучшить карточку ИИ"
+                                onclick="aiImprove('{{ c.info.sku }}', this)">
+                            <i class="bi bi-stars"></i>
+                        </button>
                         <a href="/api/products/{{ c.info.sku }}/label.pdf" class="btn btn-outline-dark"
                            title="PDF-этикетка 58×40 со штрихкодом">
                             <i class="bi bi-upc-scan"></i>
@@ -295,5 +299,76 @@ async function saveDetails(sku) {
     const data = await resp.json();
     if (data.ok) { location.reload(); } else { alert('Ошибка: ' + (data.detail || 'неизвестная')); }
 }
+
+// ---------- ИИ-улучшение карточки ----------
+async function aiImprove(sku, btn) {
+    const modalEl = document.getElementById('aiModal');
+    const body = document.getElementById('aiModalBody');
+    // Заглушка «генерация»
+    body.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-success"></div>
+            <p class="mt-3 text-muted mb-0">ИИ улучшает карточку… 10–60 секунд</p>
+        </div>`;
+    new bootstrap.Modal(modalEl).show();
+    if (btn) { btn.disabled = true; }
+    try {
+        const resp = await fetch(`/api/products/${sku}/ai-improve`, { method: 'POST' });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+            body.innerHTML = `<div class="alert alert-danger mb-0">${data.detail || 'Ошибка ИИ'}</div>`;
+            return;
+        }
+        body.innerHTML = `
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong>SEO-название</strong>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="copyField(this)">Копировать</button>
+                </div>
+                <textarea class="form-control" rows="2" readonly>${data.title}</textarea>
+            </div>
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong>Описание</strong>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="copyField(this)">Копировать</button>
+                </div>
+                <textarea class="form-control" rows="10" readonly>${data.description}</textarea>
+            </div>
+            <div class="mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong>Ключевые слова</strong>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="copyField(this)">Копировать</button>
+                </div>
+                <textarea class="form-control" rows="3" readonly>${(data.keywords || []).join(', ')}</textarea>
+            </div>
+            <div class="text-muted small">Было: «${(data.current_name || '').slice(0, 80)}…»</div>`;
+    } catch (e) {
+        body.innerHTML = `<div class="alert alert-danger mb-0">Сеть: ${e.message}</div>`;
+    } finally {
+        if (btn) { btn.disabled = false; }
+    }
+}
+
+function copyField(btn) {
+    const ta = btn.closest('.mb-3, .mb-2').querySelector('textarea');
+    ta.select();
+    navigator.clipboard.writeText(ta.value).then(() => {
+        btn.textContent = '✓ Скопировано';
+        setTimeout(() => btn.textContent = 'Копировать', 1500);
+    });
+}
 </script>
+
+<!-- Модалка ИИ-улучшения -->
+<div class="modal fade" id="aiModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-stars"></i> ИИ-улучшение карточки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="aiModalBody"></div>
+        </div>
+    </div>
+</div>
 {% endblock %}

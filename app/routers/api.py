@@ -593,3 +593,37 @@ async def product_label_pdf(
     if p is None:
         raise HTTPException(404, "Товар не найден")
     return pdf_response([{"sku": p.sku, "name": p.name}], f"label_{p.sku}.pdf")
+
+
+# ------------------------------------------------------------------
+# ИИ-улучшение карточки товара (через OmniRoute)
+# ------------------------------------------------------------------
+
+@router.post("/products/{sku}/ai-improve")
+async def product_ai_improve(
+    sku: str,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Улучшает карточку товара ИИ: SEO-название, описание, ключевые слова."""
+    from app.models import ProductInfo
+    from app.services.ai_card import AICardError, improve_card
+
+    result = await db.execute(
+        select(ProductInfo)
+        .where(ProductInfo.user_id == user.id, ProductInfo.sku == sku)
+        .limit(1)
+    )
+    p = result.scalar_one_or_none()
+    if p is None:
+        raise HTTPException(404, "Товар не найден")
+
+    try:
+        improved = await improve_card(
+            name=p.name or f"Товар {p.sku}",
+            price=p.price or 0,
+            extra=f"Тип поставки: {p.fulfillment_type}" if p.fulfillment_type else "",
+        )
+    except AICardError as e:
+        raise HTTPException(502, str(e))
+    return {"ok": True, "sku": p.sku, "current_name": p.name, **improved}
