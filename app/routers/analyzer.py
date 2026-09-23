@@ -189,281 +189,262 @@ async def get_seller_defaults(db: AsyncSession, user_id: int) -> dict:
     }
 
 
+# Защита от параллельных дублей: {user_id: True} пока анализ выполняется
+_running_analyses: dict[int, bool] = {}
+
+
 @router.post("/analyzer/api")
 async def analyzer_api(request: Request, db: AsyncSession = Depends(get_db)):
-    """Обрабатывает запрос анализа: поиск по фото + цены + рекомендации."""
+    """Принимает заявку на анализ и запускает его В ФОНЕ.
+
+    Отвечает мгновенно: результат анализа появится в Истории
+    (плюс уведомление на дашборде). Страницу можно закрыть.
+    """
     user = await get_current_user(request, db)
     if not user:
         from fastapi.responses import JSONResponse
-        return JSONResponse({"ok": False, "error": "Требуется вход. Обновите страницу и войдите заново."}, status_code=401)
+        return JSONResponse({"ok": False, "error": "Требуется вход. Обновите страницу и войдите."}, status_code=401)
 
     form = await request.form()
     product_name = (form.get("product_name") or "").strip()
     ozon_url = (form.get("ozon_url") or "").strip()
-    cost_price = _float(form.get("cost_price"))
-    commission_pct = _float(form.get("commission_pct"), default=20.0)
-    logistics_cost = _float(form.get("logistics_cost"), default=50.0)
-    acquiring_pct = _float(form.get("acquiring_pct"), default=1.5)
-    buyout_pct = _float(form.get("buyout_pct"), default=80.0)
-    min_margin_pct = _float(form.get("min_margin_pct"), default=10.0)
-    category = (form.get("category") or "").strip()
+    economics = {
+        "cost_price": _float(form.get("cost_price")),
+        "commission_pct": _float(form.get("commission_pct"), default=20.0),
+        "logistics_cost": _float(form.get("logistics_cost"), default=50.0),
+        "acquiring_pct": _float(form.get("acquiring_pct"), default=1.5),
+        "buyout_pct": _float(form.get("buyout_pct"), default=80.0),
+        "min_margin_pct": _float(form.get("min_margin_pct"), default=10.0),
+        "category": (form.get("category") or "").strip(),
+    }
 
-    photo_url = ""
-    photo_urls: list[str] = []  # все загруженные фото (публичные URL)
-    photo_links: list[dict] = []
-    photo_search_urls: dict[str, str] = {}
-    photo_prices: list[float] = []  # цены из выдачи Яндекса по фото
-
-    # 1. Сохраняем все фото и ищем по каждому в Яндексе
+    # Сохраняем фото сразу (upload-объекты живут только в этом запросе)
+    photo_urls: list[str] = []  # относительные пути (/static-uploads/...)
     photos = form.getlist("photos") if hasattr(form, "getlist") else []
     if not photos:
-        # fallback: одно поле photo (старые формы / curl)
         single = form.get("photo")
         if single and hasattr(single, "filename") and single.filename:
             photos = [single]
-
-    seen_urls: set[str] = set()
     for photo in photos:
         if not (photo and hasattr(photo, "filename") and photo.filename):
             continue
         try:
             data = await photo.read()
             if len(data) > MAX_PHOTO_SIZE:
-                continue  # слишком большое фото пропускаем, но не роняем поиск
+                continue
             ext = (photo.filename.rsplit(".", 1)[-1] or "jpg").lower()
             if ext not in ("jpg", "jpeg", "png", "webp"):
                 ext = "jpg"
-            p_url = save_upload(data, ext)
-            photo_urls.append(p_url)
-            if not photo_url:
-                photo_url = p_url
+            photo_urls.append(save_upload(data, ext))
+        except Exception:
+            continue
 
-            # Ищем по каждому фото отдельно (ошибки одного не роняют остальные)
-            searcher = YandexPhotoSearch()
-            try:
-                result = await searcher.search_by_url(_absolute(request, p_url))
-                for link in result.links:
-                    if link.url not in seen_urls:
-                        seen_urls.add(link.url)
-                        photo_links.append({
-                            "url": link.url, "marketplace": link.marketplace,
-                            "title": link.title, "price": link.price, "image": link.image,
-                        })
-                # Цены из выдачи (уникальные)
-                for p in result.prices:
-                    if p not in photo_prices:
-                        photo_prices.append(p)
-                if result.search_urls and not photo_search_urls:
-                    photo_search_urls = result.search_urls
-            finally:
-                await searcher.close()
-        except Exception as e:
-            import logging
-            logging.getLogger("analyzer").warning("Ошибка поиска по фото: %s", e)
-            continue  # не критично — продолжаем с остальными фото и текстовым поиском
-
-    if not product_name and not photo_links and not photo_urls:
+    if not product_name and not photo_urls:
         return {"ok": False, "error": "Укажите название товара или загрузите фото"}
 
-    # 2. Поиск цен по маркетплейсам (текстовый запрос по названию)
-    # Прокси и куки Ozon из настроек пользователя
-    import json as json_lib
-    from app.models import ProxySetting
-    proxy_result = await db.execute(
-        select(ProxySetting).where(ProxySetting.user_id == user.id).limit(1)
-    )
-    proxy_setting = proxy_result.scalar_one_or_none()
-    proxy_url = proxy_setting.proxy_url if proxy_setting and proxy_setting.proxy_url else ""
-    ozon_cookies: dict = {}
-    if proxy_setting and proxy_setting.ozon_cookies:
-        ozon_cookies = parse_ozon_cookies(proxy_setting.ozon_cookies)
+    # Защита: не запускаем второй анализ, пока первый не закончился
+    if _running_analyses.get(user.id):
+        return {"ok": False,
+                "error": "Предыдущий анализ ещё выполняется — результат будет в Истории"}
 
-    searcher = MarketSearch(proxy_override=proxy_url, cookies=ozon_cookies)
-    try:
-        query = product_name or "товар"
-        results = await searcher.search_all(query, limit=15)
-    finally:
-        await searcher.close()
+    _running_analyses[user.id] = True
 
-    # Собираем все цены из успешных источников
-    all_prices: list[float] = []
-    for r in results:
-        if r.ok and r.prices:
-            all_prices.extend(p.price for p in r.prices)
+    # Абсолютные URL фото (домен вычисляем сейчас, request живёт только здесь)
+    base_url = _base_url(request)
+    abs_photo_urls = [base_url + p for p in photo_urls]
 
-    # 2a. Цены из выдачи Яндекса по фото (если фото загружено)
-    yandex_photo_info: dict = {"ok": False, "count": 0, "error": ""}
-    if photo_prices:
-        all_prices.extend(photo_prices)
-        yandex_photo_info = {"ok": True, "count": len(photo_prices), "error": ""}
+    import asyncio
+    asyncio.create_task(_run_analysis(
+        user_id=user.id,
+        product_name=product_name,
+        ozon_url=ozon_url,
+        economics=economics,
+        photo_urls=photo_urls,
+        abs_photo_urls=abs_photo_urls,
+    ))
 
-    # 2b. Bright Data: официальные цены Ozon по URL карточек из фото-поиска
-    bd_prices: list[float] = []
-    bd_info: dict = {"ok": False, "count": 0, "error": ""}
-    if proxy_setting and proxy_setting.bd_api_key and proxy_setting.bd_dataset_id:
-        ozon_urls = [
-            link["url"] for link in photo_links
-            if "ozon" in (link.get("url") or "").lower()
-        ]
-        if ozon_url and "ozon" in ozon_url.lower():
-            if ozon_url not in ozon_urls:
-                ozon_urls.append(ozon_url)
-        ozon_urls = ozon_urls[:10]
-        if ozon_urls:
-            from app.services.bright_data import (
-                BrightDataError,
-                extract_price,
-                fetch_prices_by_urls,
-            )
-            try:
-                records = await fetch_prices_by_urls(
-                    proxy_setting.bd_api_key, proxy_setting.bd_dataset_id, ozon_urls
-                )
-                for rec in records:
-                    price = extract_price(rec)
-                    if price:
-                        bd_prices.append(price)
-                bd_info = {"ok": True, "count": len(bd_prices), "error": ""}
-                all_prices.extend(bd_prices)
-            except BrightDataError as e:
-                bd_info = {"ok": False, "count": 0, "error": str(e)}
-            except Exception as e:
-                bd_info = {"ok": False, "count": 0, "error": f"Bright Data: {str(e)[:200]}"}
-        else:
-            bd_info = {"ok": False, "count": 0,
-                       "error": "Нет URL товаров Ozon. Найдите товар по фото или вставьте ссылку на карточку Ozon."}
-    else:
-        bd_info = {"ok": False, "count": 0, "error": "Bright Data не подключено (Настройки)"}
-        if proxy_setting and proxy_setting.bd_api_key and not proxy_setting.bd_dataset_id:
-            bd_info["error"] = "Укажите Dataset ID в настройках Bright Data"
-        elif proxy_setting and not proxy_setting.bd_api_key:
-            bd_info["error"] = "Подключите Bright Data в настройках (API-ключ + Dataset ID)"
-
-    analysis = analyze_prices(all_prices, bucket_size=100.0)
-
-    # 3. Рекомендация
-    rec = recommend(
-        analysis["recommended_price"],
-        cost_price=cost_price,
-        commission_pct=commission_pct,
-        logistics_cost=logistics_cost,
-        acquiring_pct=acquiring_pct,
-        buyout_pct=buyout_pct,
-        min_margin_pct=min_margin_pct,
-        category_name=category,
-    )
-
-    source_status = {
-        r.marketplace: {"ok": r.ok, "count": len(r.prices), "error": r.error}
-        for r in results
-    }
-    source_status["bd"] = bd_info
-    source_status["yandex_photo"] = yandex_photo_info
-
-    # Ссылки «открыть поиск» на маркетплейсах (для ручного просмотра)
-    from urllib.parse import quote
-    q = quote(query)
-    market_search_urls = {
-        "wb": f"https://www.wildberries.ru/catalog/0/search.aspx?search={q}",
-        "ozon": f"https://www.ozon.ru/search/?text={q}",
-        "ym": f"https://market.yandex.ru/search?text={q}",
-        "aliexpress": f"https://www.aliexpress.com/w/wholesale-{q}.html",
-    }
-
-    response = {
+    return {
         "ok": True,
-        "product_name": product_name,
-        "photo_url": photo_url,
-        "photo_urls": photo_urls,
-        "photo_links": photo_links,
-        "photo_prices": photo_prices,
-        "photo_search_urls": photo_search_urls,
-        "market_search_urls": market_search_urls,
-        "sources": source_status,
-        "buckets": [
-            {"label": b.label, "count": b.count, "percent": b.percent}
-            for b in analysis["buckets"]
-        ],
-        "stats": {
-            "total": analysis["total"],
-            "median": analysis["median"],
-            "mean": analysis["mean"],
-            "min": analysis["min"],
-            "max": analysis["max"],
-            "recommended": analysis["recommended_price"],
-        },
-        "recommendation": {
-            "price": rec.recommended_price,
-            "margin_per_unit": rec.margin_per_unit,
-            "margin_pct": rec.margin_pct,
-            "breakeven_drr": rec.breakeven_drr,
-            "ad_verdict": rec.ad_verdict,
-            "ad_reason": rec.ad_reason,
-            "category_hint": rec.category_hint,
-            "summary": rec.summary,
-        },
+        "queued": True,
+        "message": "Анализ запущен в фоне. Можете закрыть страницу — результат появится в Истории (1-3 минуты).",
     }
 
-    # Сохраняем историю анализа (список товаров с ценами и фото)
+
+async def _run_analysis(
+    user_id: int,
+    product_name: str,
+    ozon_url: str,
+    economics: dict,
+    photo_urls: list[str],
+    abs_photo_urls: list[str],
+) -> None:
+    """Фоновый анализ: поиск по фото + маркетплейсы + Bright Data → История + уведомление."""
+    import logging
+    log = logging.getLogger("analyzer")
     try:
-        import json as _json
-        from app.models import AnalyzerHistory
+        # Своя сессия БД (сессия HTTP-запроса уже закрыта)
+        from app.database import async_session
+        async with async_session() as db:
+            photo_links: list[dict] = []
+            photo_prices: list[float] = []
+            seen_urls: set[str] = set()
 
-        # Товары из фото-поиска
-        items_for_history = [
-            {
-                "url": link.get("url", ""),
-                "marketplace": link.get("marketplace", ""),
-                "title": link.get("title", ""),
-                "price": link.get("price", 0),
-                "image": link.get("image", ""),
-            }
-            for link in photo_links
-        ]
-        # Дополняем товарами из текстового поиска (WB/Ozon/YM/Ali — где есть URL)
-        seen_item_urls = {it["url"] for it in items_for_history if it["url"]}
-        for r in results:
-            if not (r.ok and r.prices):
-                continue
-            for p in r.prices:
-                if not p.url or p.url in seen_item_urls:
+            # 1. Поиск по каждому фото в Яндекс.Картинках
+            for abs_url in abs_photo_urls:
+                try:
+                    searcher = YandexPhotoSearch()
+                    try:
+                        result = await searcher.search_by_url(abs_url)
+                        for link in result.links:
+                            if link.url not in seen_urls:
+                                seen_urls.add(link.url)
+                                photo_links.append({
+                                    "url": link.url, "marketplace": link.marketplace,
+                                    "title": link.title, "price": link.price, "image": link.image,
+                                })
+                        for p in result.prices:
+                            if p not in photo_prices:
+                                photo_prices.append(p)
+                    finally:
+                        await searcher.close()
+                except Exception as e:
+                    log.warning("Ошибка поиска по фото: %s", e)
+
+            # 2. Текстовый поиск по маркетплейсам
+            from app.models import ProxySetting
+            proxy_result = await db.execute(
+                select(ProxySetting).where(ProxySetting.user_id == user_id).limit(1)
+            )
+            proxy_setting = proxy_result.scalar_one_or_none()
+
+            searcher = MarketSearch()
+            try:
+                query = product_name or "товар"
+                results = await searcher.search_all(query, limit=15)
+            finally:
+                await searcher.close()
+
+            all_prices: list[float] = []
+            for r in results:
+                if r.ok and r.prices:
+                    all_prices.extend(p.price for p in r.prices)
+            if photo_prices:
+                all_prices.extend(photo_prices)
+
+            # 3. Bright Data: точные цены Ozon по URL карточек
+            bd_prices: list[float] = []
+            if proxy_setting and proxy_setting.bd_api_key and proxy_setting.bd_dataset_id:
+                ozon_urls = [
+                    link["url"] for link in photo_links
+                    if "ozon" in (link.get("url") or "").lower()
+                ]
+                if ozon_url and "ozon" in ozon_url.lower() and ozon_url not in ozon_urls:
+                    ozon_urls.append(ozon_url)
+                ozon_urls = ozon_urls[:10]
+                if ozon_urls:
+                    from app.services.bright_data import (
+                        BrightDataError, extract_price, fetch_prices_by_urls,
+                    )
+                    try:
+                        records = await fetch_prices_by_urls(
+                            proxy_setting.bd_api_key, proxy_setting.bd_dataset_id, ozon_urls
+                        )
+                        for rec in records:
+                            price = extract_price(rec)
+                            if price:
+                                bd_prices.append(price)
+                        all_prices.extend(bd_prices)
+                    except (BrightDataError, Exception) as e:
+                        log.warning("Bright Data: %s", e)
+
+            # 4. Анализ и рекомендация
+            analysis = analyze_prices(all_prices, bucket_size=100.0)
+            rec = recommend(
+                analysis["recommended_price"],
+                cost_price=economics["cost_price"],
+                commission_pct=economics["commission_pct"],
+                logistics_cost=economics["logistics_cost"],
+                acquiring_pct=economics["acquiring_pct"],
+                buyout_pct=economics["buyout_pct"],
+                min_margin_pct=economics["min_margin_pct"],
+                category_name=economics["category"],
+            )
+
+            # 5. Сохранение в Историю
+            import json as _json
+            from app.models import AnalyzerHistory, Notification
+            items_for_history = [
+                {
+                    "url": link.get("url", ""),
+                    "marketplace": link.get("marketplace", ""),
+                    "title": link.get("title", ""),
+                    "price": link.get("price", 0),
+                    "image": link.get("image", ""),
+                }
+                for link in photo_links
+            ]
+            seen_item_urls = {it["url"] for it in items_for_history if it["url"]}
+            for r in results:
+                if not (r.ok and r.prices):
                     continue
-                seen_item_urls.add(p.url)
-                items_for_history.append({
-                    "url": p.url,
-                    "marketplace": p.marketplace,
-                    "title": p.name,
-                    "price": p.price,
-                    "image": "",
-                })
-        history = AnalyzerHistory(
-            user_id=user.id,
-            query=product_name,
-            photo_url=photo_url,
-            photo_urls_json=_json.dumps(photo_urls, ensure_ascii=False),
-            photo_prices=_json.dumps(photo_prices, ensure_ascii=False),
-            items_json=_json.dumps(items_for_history, ensure_ascii=False),
-            stats_json=_json.dumps(response["stats"], ensure_ascii=False),
-        )
-        db.add(history)
-        await db.commit()
+                for p in r.prices:
+                    if not p.url or p.url in seen_item_urls:
+                        continue
+                    seen_item_urls.add(p.url)
+                    items_for_history.append({
+                        "url": p.url, "marketplace": p.marketplace,
+                        "title": p.name, "price": p.price, "image": "",
+                    })
+
+            stats = {
+                "total": analysis["total"], "median": analysis["median"],
+                "mean": analysis["mean"], "min": analysis["min"],
+                "max": analysis["max"], "recommended": analysis["recommended_price"],
+            }
+            history = AnalyzerHistory(
+                user_id=user_id,
+                query=product_name,
+                photo_url=photo_urls[0] if photo_urls else "",
+                photo_urls_json=_json.dumps(photo_urls, ensure_ascii=False),
+                photo_prices=_json.dumps(photo_prices, ensure_ascii=False),
+                items_json=_json.dumps(items_for_history, ensure_ascii=False),
+                stats_json=_json.dumps(stats, ensure_ascii=False),
+            )
+            db.add(history)
+
+            # 6. Уведомление: анализ готов
+            title = product_name or "по фото"
+            db.add(Notification(
+                user_id=user_id, level="info",
+                message=f"Анализ «{title}» готов: {analysis['total']} цен, "
+                        f"медиана {analysis['median']:.0f} ₽. "
+                        f"Смотреть: История анализатора.",
+            ))
+            await db.commit()
+            log.info("Фоновый анализ для user %s завершён: %d цен", user_id, analysis["total"])
     except Exception as e:
-        import logging
-        logging.getLogger("analyzer").warning("Не удалось сохранить историю: %s", e)
-        await db.rollback()
+        log.error("Фоновый анализ упал (user %s): %s", user_id, e)
+        try:
+            from app.database import async_session
+            from app.models import Notification
+            async with async_session() as db:
+                db.add(Notification(
+                    user_id=user_id, level="warning",
+                    message=f"Анализ «{product_name or 'по фото'}» завершился ошибкой: {str(e)[:150]}",
+                ))
+                await db.commit()
+        except Exception:
+            pass
+    finally:
+        _running_analyses.pop(user_id, None)
 
-    return response
 
-
-def _absolute(request: Request, path: str) -> str:
-    """Превращает относительный путь фото в абсолютный публичный URL.
-
-    Учитывает reverse-proxy (nginx): берём домен из заголовка Host/X-Forwarded-Proto,
-    чтобы Яндекс мог открыть фото по внешнему адресу (не http://127.0.0.1:8002/).
-    """
+def _base_url(request: Request) -> str:
+    """Базовый публичный URL с учётом reverse-proxy (для фото, которые читает Яндекс)."""
     scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.hostname
-    return f"{scheme}://{host}{path}"
+    return f"{scheme}://{host}"
+
 
 
 def _float(value, default: float = 0.0) -> float:
@@ -473,34 +454,3 @@ def _float(value, default: float = 0.0) -> float:
         return default
 
 
-def parse_ozon_cookies(raw: str) -> dict:
-    """Парсит куки Ozon из настроек.
-
-    Поддерживает два формата:
-    1. JSON: {"__Secure-access-token": "...", "abt_data": "..."}
-    2. Cookie-строка: "name1=value1; name2=value2" (из DevTools → Network → Cookie)
-    """
-    import json as json_lib
-
-    raw = (raw or "").strip()
-    if not raw:
-        return {}
-
-    # 1. Пробуем JSON
-    try:
-        data = json_lib.loads(raw)
-        if isinstance(data, dict):
-            return {str(k): str(v) for k, v in data.items()}
-    except (json_lib.JSONDecodeError, TypeError):
-        pass
-
-    # 2. Пробуем Cookie-строку "name=value; name2=value2"
-    cookies: dict = {}
-    for part in raw.split(";"):
-        part = part.strip()
-        if "=" in part:
-            name, _, value = part.partition("=")
-            name = name.strip()
-            if name:
-                cookies[name] = value.strip()
-    return cookies

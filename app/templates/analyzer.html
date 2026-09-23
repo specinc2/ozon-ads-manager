@@ -88,8 +88,11 @@
         <!-- Загрузка -->
         <div id="analyzing" class="text-center py-5 d-none">
             <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
-            <p class="mt-3 text-muted">Ищем цены на маркетплейсах… это может занять 20–60 секунд.</p>
+            <p class="mt-3 text-muted">Запускаем анализ…</p>
         </div>
+
+        <!-- Заявка принята (фоновый анализ) -->
+        <div id="queuedBox" class="alert alert-info d-none"></div>
 
         <!-- Результат -->
         <div id="result" class="d-none">
@@ -163,6 +166,8 @@ document.getElementById('analyzerForm')?.addEventListener('submit', async (e) =>
     // Спрятать прошлый результат
     document.getElementById('result').classList.add('d-none');
     document.getElementById('errorBox').classList.add('d-none');
+    const qb = document.getElementById('queuedBox');
+    if (qb) qb.classList.add('d-none');
     document.getElementById('analyzing').classList.remove('d-none');
     const btn = document.getElementById('analyzeBtn');
     btn.disabled = true;
@@ -187,6 +192,11 @@ document.getElementById('analyzerForm')?.addEventListener('submit', async (e) =>
             showError(data.error || 'Ошибка анализа');
             return;
         }
+        if (data.queued) {
+            // Анализ запущен в фоне — не ждём, результат будет в Истории
+            showQueued(data.message);
+            return;
+        }
         renderResult(data);
     } catch (err) {
         showError('Ошибка сети: ' + err.message);
@@ -196,6 +206,26 @@ document.getElementById('analyzerForm')?.addEventListener('submit', async (e) =>
         btn.innerHTML = '<i class="bi bi-search"></i> Анализировать';
     }
 });
+
+function showQueued(msg) {
+    const box = document.getElementById('queuedBox');
+    if (!box) return;
+    box.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <i class="bi bi-hourglass-split text-primary"></i>
+                <strong>Анализ запущен в фоне!</strong>
+                <span class="text-muted d-block small mt-1">${msg || 'Результат появится в Истории через 1-3 минуты.'}</span>
+            </div>
+            <div>
+                <a href="/analyzer/history" class="btn btn-primary btn-sm">
+                    <i class="bi bi-clock-history"></i> Открыть Историю
+                </a>
+            </div>
+        </div>`;
+    box.classList.remove('d-none');
+    document.getElementById('result').classList.add('d-none');
+}
 
 function showError(msg) {
     const box = document.getElementById('errorBox');
