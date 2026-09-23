@@ -213,13 +213,13 @@ class MarketSearch:
         resp = None
         for attempt in range(3):
             resp = await self._client.get(url, headers={"Accept": "application/json"})
-            if resp.status_code == 429:
-                # WB жёстко лимитирует — ждём между попытками
-                await asyncio.sleep(2 + attempt * 2)
+            if resp.status_code in (403, 429):
+                # WB жёстко лимитирует (403/429) — ждём между попытками всё дольше
+                await asyncio.sleep(3 + attempt * 3)
                 continue
             break
-        if resp is None or resp.status_code == 429:
-            return SearchResult(marketplace="wb", ok=False, error="Wildberries: лимит запросов (429), попробуйте позже")
+        if resp is None or resp.status_code in (403, 429):
+            return SearchResult(marketplace="wb", ok=False, error="Wildberries: лимит запросов (403/429), попробуйте позже")
         resp.raise_for_status()
         data = resp.json()
         points: list[PricePoint] = []
@@ -383,6 +383,33 @@ class PriceBucket:
     price_to: float
     count: int
     percent: float
+
+
+def analyze_prices_sourced(pairs: list[tuple[float, str]], bucket_size: float = 100.0) -> list[dict]:
+    """Вилки цен с разбивкой по источникам (для Истории анализатора).
+
+    pairs: [(price, source), ...] где source: 'yandex' | 'wb' | 'ym' | 'ozon' | 'aliexpress'.
+    Возвращает [{label, count, percent, sources: {wb: 3, yandex: 5}}, ...]
+    """
+    if not pairs:
+        return []
+    total = len(pairs)
+    buckets: dict[tuple[float, float], dict] = {}
+    for p, src in pairs:
+        idx = int(p // bucket_size)
+        key = (idx * bucket_size, (idx + 1) * bucket_size)
+        b = buckets.setdefault(key, {"count": 0, "sources": {}})
+        b["count"] += 1
+        b["sources"][src] = b["sources"].get(src, 0) + 1
+    out = []
+    for (lo, hi), b in sorted(buckets.items()):
+        out.append({
+            "label": f"{int(lo)}–{int(hi)} ₽",
+            "count": b["count"],
+            "percent": round(b["count"] / total * 100, 1),
+            "sources": b["sources"],
+        })
+    return out
 
 
 def analyze_prices(prices: list[float], bucket_size: float = 100.0) -> dict:

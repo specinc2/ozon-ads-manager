@@ -539,3 +539,57 @@ async def export_products_csv(
                      "% выкупа", "В акции", "Скидка акции %", "Заказов за месяц", "Маржа шт"],
         filename="products_economics.csv",
     )
+
+
+# ------------------------------------------------------------------
+# PDF-этикетки со штрихкодом (58×40 мм)
+# ------------------------------------------------------------------
+
+@router.get("/products/labels.pdf")
+async def products_labels_pdf(
+    skus: str = "",
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """PDF-этикетки 58×40 мм со штрихкодом Code128 (SKU).
+
+    Без параметров — все товары пользователя; ?skus=1,2,3 — выбранные.
+    Страница = одна этикетка (для термопринтера).
+    """
+    from app.models import ProductInfo
+    from app.services.barcode_pdf import pdf_response
+
+    stmt = select(ProductInfo).where(ProductInfo.user_id == user.id)
+    if skus:
+        sku_list = [s.strip() for s in skus.split(",") if s.strip()]
+        stmt = stmt.where(ProductInfo.sku.in_(sku_list))
+    stmt = stmt.order_by(ProductInfo.name)
+    result = await db.execute(stmt)
+    products = list(result.scalars().all())
+    if not products:
+        raise HTTPException(404, "Товары не найдены")
+
+    items = [{"sku": p.sku, "name": p.name} for p in products]
+    name = "labels" if len(items) > 1 else f"label_{items[0]['sku']}"
+    return pdf_response(items, f"{name}.pdf")
+
+
+@router.get("/products/{sku}/label.pdf")
+async def product_label_pdf(
+    sku: str,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Одна PDF-этикетка 58×40 мм для товара."""
+    from app.models import ProductInfo
+    from app.services.barcode_pdf import pdf_response
+
+    result = await db.execute(
+        select(ProductInfo)
+        .where(ProductInfo.user_id == user.id, ProductInfo.sku == sku)
+        .limit(1)
+    )
+    p = result.scalar_one_or_none()
+    if p is None:
+        raise HTTPException(404, "Товар не найден")
+    return pdf_response([{"sku": p.sku, "name": p.name}], f"label_{p.sku}.pdf")

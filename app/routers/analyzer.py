@@ -40,6 +40,15 @@ async def analyzer_page(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
+@router.get("/analyzer/running")
+async def analyzer_running(request: Request, db: AsyncSession = Depends(get_db)):
+    """Статус фонового анализа текущего пользователя (для индикатора в Истории)."""
+    user = await get_current_user(request, db)
+    if not user:
+        return {"running": False}
+    return {"running": bool(_running_analyses.get(user.id))}
+
+
 @router.get("/analyzer/history")
 async def analyzer_history(request: Request, db: AsyncSession = Depends(get_db)):
     """История поисков анализатора: фото, найденные товары, цены, фото ссылок."""
@@ -325,11 +334,15 @@ async def _run_analysis(
                 await searcher.close()
 
             all_prices: list[float] = []
+            sourced_pairs: list[tuple[float, str]] = []  # (цена, источник) для вилки
             for r in results:
                 if r.ok and r.prices:
-                    all_prices.extend(p.price for p in r.prices)
+                    for p in r.prices:
+                        all_prices.append(p.price)
+                        sourced_pairs.append((p.price, r.marketplace))
             if photo_prices:
                 all_prices.extend(photo_prices)
+                sourced_pairs.extend((p, "yandex") for p in photo_prices)
 
             # 3. Bright Data: точные цены Ozon по URL карточек
             bd_prices: list[float] = []
@@ -354,11 +367,14 @@ async def _run_analysis(
                             if price:
                                 bd_prices.append(price)
                         all_prices.extend(bd_prices)
+                        sourced_pairs.extend((p, "ozon") for p in bd_prices)
                     except (BrightDataError, Exception) as e:
                         log.warning("Bright Data: %s", e)
 
-            # 4. Анализ и рекомендация
+            # 4. Анализ, рекомендация и вилка с источниками
             analysis = analyze_prices(all_prices, bucket_size=100.0)
+            from app.services.market_search import analyze_prices_sourced
+            buckets_sourced = analyze_prices_sourced(sourced_pairs, bucket_size=100.0)
             rec = recommend(
                 analysis["recommended_price"],
                 cost_price=economics["cost_price"],
@@ -400,6 +416,7 @@ async def _run_analysis(
                 "total": analysis["total"], "median": analysis["median"],
                 "mean": analysis["mean"], "min": analysis["min"],
                 "max": analysis["max"], "recommended": analysis["recommended_price"],
+                "buckets": buckets_sourced,
             }
             history = AnalyzerHistory(
                 user_id=user_id,

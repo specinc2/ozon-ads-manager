@@ -30,6 +30,9 @@
         <a href="/api/products/export" class="btn btn-outline-success">
             <i class="bi bi-filetype-csv"></i> Экспорт CSV
         </a>
+        <a href="/api/products/labels.pdf" class="btn btn-outline-dark" title="PDF-этикетки 58×40 мм для всех товаров">
+            <i class="bi bi-upc-scan"></i> Все этикетки PDF
+        </a>
     </div>
 </div>
 
@@ -149,6 +152,10 @@
                                 onclick="openDetails(this)">
                             <i class="bi bi-sliders"></i>
                         </button>
+                        <a href="/api/products/{{ c.info.sku }}/label.pdf" class="btn btn-outline-dark"
+                           title="PDF-этикетка 58×40 со штрихкодом">
+                            <i class="bi bi-upc-scan"></i>
+                        </a>
                     </div>
                 </td>
             </tr>

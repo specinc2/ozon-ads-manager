@@ -3,6 +3,17 @@
 {% block content %}
 <h1 class="mb-4"><i class="bi bi-clock-history"></i> История анализатора</h1>
 
+<!-- Индикатор выполняющегося анализа -->
+<div id="runningBox" class="alert alert-info d-none">
+    <div class="d-flex align-items-center">
+        <div class="spinner-border spinner-border-sm me-2 text-primary"></div>
+        <div class="flex-grow-1">
+            <strong>Анализ выполняется в фоне…</strong>
+            <span class="text-muted small">Страница обновится автоматически, когда результат будет готов.</span>
+        </div>
+    </div>
+</div>
+
 <div class="d-flex justify-content-between align-items-start mb-4">
     <p class="text-muted mb-0">
         Ваши поиски цен по фото и названию. Для каждого поиска показаны найденные
@@ -59,6 +70,40 @@
         </div>
         {% endif %}
 
+        {% if h.stats.get('buckets') %}
+        <div class="mb-3">
+            <strong class="small d-block mb-2">Вилка цен по источникам:</strong>
+            {% set src_names = {'yandex': 'Яндекс', 'wb': 'WB', 'ym': 'Маркет', 'ozon': 'Ozon', 'aliexpress': 'Ali'} %}
+            {% set src_colors = {'yandex': 'bg-warning text-dark', 'wb': 'bg-danger', 'ym': 'bg-primary', 'ozon': 'bg-dark', 'aliexpress': 'bg-secondary'} %}
+            {% set max_count = h.stats.buckets | map(attribute='count') | max %}
+            <div class="d-flex flex-column gap-1">
+                {% for b in h.stats.buckets %}
+                {% if b.count >= (max_count * 0.05) %}
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted text-nowrap" style="width: 110px;">{{ b.label }}</small>
+                    <div class="progress flex-grow-1" style="height: 18px;">
+                        {% set total_w = b.count / max_count * 100 %}
+                        {% for src, cnt in b.sources.items() %}
+                        <div class="progress-bar {{ src_colors.get(src, 'bg-secondary') }}"
+                             style="width: {{ cnt / b.count * total_w }}%"
+                             title="{{ src_names.get(src, src) }}: {{ cnt }}">{{ cnt }}</div>
+                        {% endfor %}
+                    </div>
+                    <small class="text-muted text-nowrap">{{ b.count }}</small>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            <div class="small text-muted mt-1">
+                <span class="badge bg-warning text-dark me-1">Яндекс</span>
+                <span class="badge bg-danger me-1">WB</span>
+                <span class="badge bg-primary me-1">Маркет</span>
+                <span class="badge bg-dark me-1">Ozon (Bright Data)</span>
+                <span class="badge bg-secondary me-1">AliExpress</span>
+            </div>
+        </div>
+        {% endif %}
+
         {% if h.goods %}
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-2">
             {% for it in h.goods %}
@@ -94,4 +139,35 @@
 </div>
 {% endfor %}
 
+{% endblock %}
+{% block extra_scripts %}
+<script>
+// Индикатор и автообновление: пока фоновый анализ идёт — опрашиваем статус,
+// при завершении страница перезагружается и показывает свежий результат.
+(function pollAnalysisStatus() {
+    const box = document.getElementById('runningBox');
+    if (!box) return;
+    let wasRunning = false;
+
+    async function check() {
+        try {
+            const resp = await fetch('/analyzer/running');
+            const data = await resp.json();
+            if (data.running) {
+                wasRunning = true;
+                box.classList.remove('d-none');
+            } else {
+                box.classList.add('d-none');
+                if (wasRunning) {
+                    // Анализ только что завершился — обновляем страницу
+                    window.location.reload();
+                    return;
+                }
+            }
+        } catch (e) { /* сеть — просто попробуем снова */ }
+        setTimeout(check, 5000);
+    }
+    check();
+})();
+</script>
 {% endblock %}
