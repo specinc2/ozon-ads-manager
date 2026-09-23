@@ -627,3 +627,33 @@ async def product_ai_improve(
     except AICardError as e:
         raise HTTPException(502, str(e))
     return {"ok": True, "sku": p.sku, "current_name": p.name, **improved}
+
+
+@router.post("/products/{sku}/ai-rich")
+async def product_ai_rich(
+    sku: str,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Генерирует Rich Content JSON Ozon для товара (секционное описание)."""
+    from app.models import ProductInfo
+    from app.services.ai_card import AICardError, generate_rich_content
+
+    result = await db.execute(
+        select(ProductInfo)
+        .where(ProductInfo.user_id == user.id, ProductInfo.sku == sku)
+        .limit(1)
+    )
+    p = result.scalar_one_or_none()
+    if p is None:
+        raise HTTPException(404, "Товар не найден")
+
+    try:
+        data = await generate_rich_content(
+            name=p.name or f"Товар {p.sku}",
+            price=p.price or 0,
+            extra=f"Тип поставки: {p.fulfillment_type}" if p.fulfillment_type else "",
+        )
+    except AICardError as e:
+        raise HTTPException(502, str(e))
+    return {"ok": True, "sku": p.sku, "model": data["model"], "rich": data["rich"]}

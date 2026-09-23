@@ -187,3 +187,194 @@ async def improve_card(name: str, price: float = 0, category: str = "",
         f"ни одна модель не ответила (пробовали: {', '.join(tried)}). "
         f"Последние ошибки: {'; '.join(errors[-2:])}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Rich Content JSON (Ozon)
+# ---------------------------------------------------------------------------
+
+RICH_SYSTEM_PROMPT = """Ты — эксперт по продающим описаниям товаров Ozon Rich Content.
+Структурируй описание товара в секции для богатого контента.
+
+Отвечай СТРОГО JSON без markdown:
+{
+  "intro": "краткое вступление 1-2 предложения",
+  "sections": [
+    {"title": "Заголовок секции", "paragraphs": ["абзац текста"], "bullets": ["пункт списка"]},
+    ...
+  ]
+}
+
+Требования: 3-5 секций («Описание», «Преимущества», «Как использовать», «Кому подойдёт»).
+Секция может иметь paragraphs И/ИЛИ bullets (bullets — 3-6 пунктов).
+Пиши по-русски, без выдуманных характеристик, которых нет в данных."""
+
+
+def _build_rich_json(intro: str, sections: list) -> dict:
+    """Превращает секции ИИ в Rich Content JSON Ozon (виджеты)."""
+    content: list[dict] = []
+
+    def text_block(text: str, size: str = "size2") -> dict:
+        return {"widgetName": "raTextBlock",
+                "text": {"size": size, "color": "color1", "content": [str(text)]}}
+
+    if intro:
+        content.append(text_block(intro))
+    for sec in sections or []:
+        title = str(sec.get("title", "")).strip()
+        if title:
+            # Заголовок секции — крупный текст (size5 ≈ h3)
+            content.append(text_block(title, "size5"))
+        for p in sec.get("paragraphs") or []:
+            if str(p).strip():
+                content.append(text_block(p))
+        bullets = [str(b).strip() for b in (sec.get("bullets") or []) if str(b).strip()]
+        if bullets:
+            content.append({
+                "widgetName": "list",
+                "theme": "bullet",
+                "blocks": [{"widgetName": "raTextBlock",
+                            "text": {"size": "size2", "color": "color1",
+                                     "content": [b]}} for b in bullets],
+            })
+    return {"content": content, "version": 0.3}
+
+
+def _parse_rich(content: str) -> dict:
+    """Разбирает JSON-секции ИИ и строит Rich Content JSON."""
+    content = content.strip()
+    if content.startswith("```"):
+        content = content.strip("`")
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+    start, end = content.find("{"), content.rfind("}")
+    if start == -1 or end == -1:
+        raise AICardError("ИИ вернул не-JSON")
+    try:
+        data = json.loads(content[start:end + 1])
+    except json.JSONDecodeError:
+        raise AICardError("не удалось разобрать JSON rich-контента")
+    sections = data.get("sections") or []
+    if not sections and not data.get("intro"):
+        raise AICardError("пустой rich-контент")
+    return _build_rich_json(data.get("intro", ""), sections)
+
+
+async def generate_rich_content(name: str, price: float = 0, category: str = "",
+                                extra: str = "") -> dict:
+    """Генерирует Rich Content JSON Ozon для товара. Возвращает {rich, model}."""
+    if not AI_API_KEY:
+        raise AICardError("ИИ не настроен: задайте AI_API_KEY в .env")
+
+    user_msg = f"Товар: {name}\nЦена: {price:.0f} ₽\n"
+    if category:
+        user_msg += f"Категория: {category}\n"
+    if extra:
+        user_msg += f"Данные: {extra}\n"
+
+    errors: list[str] = []
+    for model in _models_to_try():
+        try:
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": RICH_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+                "max_tokens": 3000,
+                "temperature": 0.7,
+            }
+            headers = {"Authorization": f"Bearer {AI_API_KEY}",
+                       "Content-Type": "application/json"}
+            async with httpx.AsyncClient(timeout=MODEL_TIMEOUT) as client:
+                resp = await client.post(f"{AI_API_URL}/chat/completions",
+                                         headers=headers, json=payload)
+            if resp.status_code == 404 or "is not a valid model" in resp.text:
+                _register_fail(model, permanent=True)
+                continue
+            if resp.status_code != 200:
+                raise AICardError(f"HTTP {resp.status_code}")
+            choices = resp.json().get("choices") or []
+            if not choices:
+                raise AICardError("пустой ответ")
+            raw = (choices[0].get("message") or {}).get("content") or ""
+            rich = _parse_rich(raw)
+            _register_success(model)
+            return {"rich": rich, "model": model}
+        except AICardError as e:
+            _register_fail(model)
+            errors.append(f"{model}: {e}")
+            continue
+    raise AICardError(f"rich-контент не сгенерирован: {'; '.join(errors[-2:])}")
+
+
+# ---------------------------------------------------------------------------
+# Авто-обновление ТОПа free-моделей (раз в 10 дней, models.dev + зонд)
+# ---------------------------------------------------------------------------
+
+# Известные надёжные семейства — приоритет при сортировке кандидатов
+_PREFERRED_FAMILIES = ("z-ai", "google", "meta", "deepseek", "qwen", "mistral", "moonshot")
+
+
+async def refresh_top_models(max_probe: int = 6) -> dict:
+    """Обновляет порядок AI_MODELS: каталог models.dev (:free, cost=0) + живой зонд.
+
+    Возвращает {"checked": N, "alive": [...], "order": [...]}.
+    """
+    global AI_MODELS
+    import asyncio as _asyncio
+
+    candidates: list[str] = []
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get("https://models.dev/api.json")
+            if resp.status_code == 200:
+                catalog = resp.json()
+                models = (catalog.get("openrouter") or {}).get("models") or {}
+                for mid, m in models.items():
+                    cost = m.get("cost") or {}
+                    if mid.endswith(":free") and cost.get("input") == 0 and cost.get("output") == 0:
+                        candidates.append(f"openrouter/{mid}")
+    except Exception as e:
+        logger.warning("models.dev недоступен: %s", e)
+
+    # Приоритет: текущие модели (не теряем рабочую) → предпочитаемые семейства → остальные
+    current = [m for m in AI_MODELS if m in candidates or m.startswith("openrouter/")]
+    preferred = [m for m in candidates
+                 if any(m.split("/")[1].startswith(f) for f in _PREFERRED_FAMILIES if "/" in m)]
+    rest = [m for m in candidates if m not in preferred]
+    ordered = list(dict.fromkeys(current + preferred + rest))
+
+    # Зонд: короткий запрос к топ-N кандидатам (кроме известных мёртвых)
+    probe_list = [m for m in ordered if not _is_on_cooldown(m)][:max_probe]
+    alive: list[str] = []
+    for model in probe_list:
+        try:
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": "ок"}],
+                "max_tokens": 5,
+            }
+            headers = {"Authorization": f"Bearer {AI_API_KEY}",
+                       "Content-Type": "application/json"}
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                resp = await client.post(f"{AI_API_URL}/chat/completions",
+                                         headers=headers, json=payload)
+            if resp.status_code == 404 or "is not a valid model" in resp.text:
+                _register_fail(model, permanent=True)
+            elif resp.status_code == 200 and (resp.json().get("choices") or []):
+                alive.append(model)
+                _register_success(model)
+            else:
+                _register_fail(model)
+        except Exception:
+            _register_fail(model)
+
+    # Новый порядок: живые (в порядке зонда) → остальные кандидаты
+    new_order = alive + [m for m in ordered if m not in alive]
+    if new_order:
+        AI_MODELS = new_order[:10]
+    logger.info("AI-модели обновлены: каталог=%d, зонд живых=%d, порядок=%s",
+                len(candidates), len(alive), AI_MODELS[:5])
+    return {"checked": len(probe_list), "alive": alive, "order": AI_MODELS[:5]}

@@ -44,8 +44,28 @@ def start_scheduler() -> None:
         max_instances=1,
         coalesce=True,
     )
+    # Авто-обновление ТОПа free-моделей ИИ: раз в 10 дней
+    _scheduler.add_job(
+        refresh_ai_models_job,
+        IntervalTrigger(days=10),
+        id="refresh_ai_models",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=None,  # первый запуск через 10 дней (не при старте)
+    )
     _scheduler.start()
     logger.info("Планировщик запущен, интервал %s мин", interval)
+
+
+async def refresh_ai_models_job() -> None:
+    """Раз в 10 дней: обновляет список рабочих free-моделей ИИ (каталог + зонд)."""
+    try:
+        from app.services.ai_card import refresh_top_models
+        result = await refresh_top_models()
+        logger.info("Авто-обновление ИИ-моделей: проверено %s, живые: %s",
+                    result.get("checked"), ", ".join(result.get("alive", [])))
+    except Exception as e:
+        logger.warning("Авто-обновление ИИ-моделей не удалось: %s", e)
 
 
 def stop_scheduler() -> None:
