@@ -330,16 +330,19 @@ async function aiImprove(sku, btn, mode = 'card') {
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <strong>Rich Content JSON (Ozon)</strong>
-                    <div>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="copyField(this)">Копировать JSON</button>
-                        <button class="btn btn-sm btn-success" onclick="publishRich('${data.sku}', this)">
-                            <i class="bi bi-cloud-upload"></i> Опубликовать в Ozon
-                        </button>
-                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="copyRich(this)">Копировать JSON</button>
                 </div>
-                <textarea id="richJsonArea" class="form-control font-monospace" style="font-size: 12px;" rows="16" readonly>${richStr}</textarea>
-                <div class="text-muted small mt-2">Модель: <code>${data.model}</code>
-                    · Кнопка «Опубликовать» перезапишет описание товара на Ozon.</div>`;
+                <textarea id="richJsonArea" class="form-control font-monospace" style="font-size: 12px;" rows="14" readonly>${richStr}</textarea>
+                <div class="mt-2 small">
+                    <strong>Как вставить на Ozon (30 секунд):</strong>
+                    <ol class="mb-1 mt-1">
+                        <li>Скопируйте JSON кнопкой выше</li>
+                        <li>ЛК Ozon → Товары → откройте товар → <strong>Редактировать описание</strong></li>
+                        <li>Переключитесь на вкладку <strong>Rich Content → JSON</strong> (иконка &lt;/&gt;)</li>
+                        <li>Удалите старый код, вставьте скопированный → <strong>Сохранить</strong></li>
+                    </ol>
+                    <span class="text-muted">Модель: <code>${data.model}</code>. Прямая публикация через API недоступна — Ozon убрал метод обновления описания (v1 только читает).</span>
+                </div>`;
             return;
         }
         body.innerHTML = `
@@ -387,34 +390,13 @@ function copyField(btn) {
     });
 }
 
-async function publishRich(sku, btn) {
-    if (!confirm('Опубликовать Rich-контент в товар на Ozon?\nТекущее описание будет ЗАМЕНЕНО.')) return;
+function copyRich(btn) {
     const ta = document.getElementById('richJsonArea');
-    if (!ta) return;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Публикация…';
-    try {
-        const resp = await fetch(`/api/products/${sku}/ai-rich/publish`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rich: JSON.parse(ta.value) }),
-        });
-        const data = await resp.json();
-        if (resp.ok && data.ok) {
-            btn.innerHTML = '<i class="bi bi-check-lg"></i> Опубликовано!';
-            btn.classList.remove('btn-success');
-            btn.classList.add('btn-outline-success');
-        } else {
-            btn.innerHTML = '<i class="bi bi-x-lg"></i> Ошибка';
-            alert('Ozon отклонил: ' + (data.detail || JSON.stringify(data.ozon_response || '').slice(0, 200)));
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-cloud-upload"></i> Опубликовать в Ozon';
-        }
-    } catch (e) {
-        alert('Сеть: ' + e.message);
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-cloud-upload"></i> Опубликовать в Ozon';
-    }
+    ta.select();
+    navigator.clipboard.writeText(ta.value).then(() => {
+        btn.textContent = '✓ Скопировано';
+        setTimeout(() => btn.textContent = 'Копировать JSON', 1500);
+    });
 }
 </script>
 
