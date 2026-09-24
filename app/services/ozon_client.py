@@ -411,6 +411,8 @@ def normalize_campaign(raw: dict) -> dict:
         "title": raw.get("title") or f"Кампания {cid}",
         "status": STATE_MAP.get(raw.get("state", ""), raw.get("state") or "UNKNOWN"),
         "campaign_type": CAMPAIGN_TYPE_MAP.get(str(ctype), str(ctype)),
+        "object_type": str(ctype),
+        "strategy": str(raw.get("productAutopilotStrategy") or ""),
         "daily_budget": rubles_from_micro(raw.get("dailyBudget")) if raw.get("dailyBudget") not in (None, "", "0") else None,
         "weekly_budget": rubles_from_micro(raw.get("weeklyBudget")) if raw.get("weeklyBudget") not in (None, "", "0") else None,
         "total_budget": rubles_from_micro(raw.get("budget")) if raw.get("budget") not in (None, "", "0") else None,

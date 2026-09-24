@@ -97,6 +97,27 @@ async def api_update_budget(campaign_pk: int, body: CampaignUpdate,
     return {"ok": True}
 
 
+@router.put("/campaigns/{campaign_pk}/target-drr")
+async def api_update_target_drr(campaign_pk: int, request: Request,
+                                user: User = Depends(require_user), db: AsyncSession = Depends(get_db)):
+    """Сохраняет целевой ДРР кампании (локально — Ozon API не отдаёт цель автостратегии)."""
+    from pydantic import BaseModel, Field
+
+    class TargetDrr(BaseModel):
+        target_drr: float | None = Field(None, ge=0, le=100)
+
+    body = TargetDrr(**(await request.json()))
+    campaign = await get_campaign_or_none(db, user.id, campaign_pk)
+    if not campaign:
+        raise HTTPException(404, "Кампания не найдена")
+    campaign.target_drr = body.target_drr
+    await db.commit()
+    await log_action(db, action="target_drr_set", user_id=user.id,
+                     entity_type="campaign", entity_name=campaign.title,
+                     details={"target_drr": body.target_drr})
+    return {"ok": True, "target_drr": body.target_drr}
+
+
 @router.post("/campaigns/{campaign_pk}/sync")
 async def api_sync_campaign(campaign_pk: int, user: User = Depends(require_user), db: AsyncSession = Depends(get_db)):
     campaign = await get_campaign_or_none(db, user.id, campaign_pk)

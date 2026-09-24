@@ -51,6 +51,9 @@ async def _migrate_sqlite(conn) -> None:
             "drr": "FLOAT DEFAULT 0",
             "to_cart": "INTEGER DEFAULT 0",
             "avg_click_price": "FLOAT DEFAULT 0",
+            "target_drr": "FLOAT",
+            "object_type": "TEXT DEFAULT ''",
+            "strategy": "TEXT DEFAULT ''",
         },
         "api_keys": {
             "seller_client_id_enc": "TEXT DEFAULT ''",

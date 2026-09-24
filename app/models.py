@@ -90,6 +90,11 @@ class Campaign(Base):
     drr: Mapped[float] = mapped_column(Float, default=0.0)
     to_cart: Mapped[int] = mapped_column(Integer, default=0)
     avg_click_price: Mapped[float] = mapped_column(Float, default=0.0)
+    # Цель пользователя: целевой ДРР (Ozon API не отдаёт цель автостратегии — задаём сами)
+    target_drr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Тип объекта (SKU — товарная, REF_BLOGGER/REF_VK — блогерские) и автостратегия
+    object_type: Mapped[str] = mapped_column(String(32), default="")
+    strategy: Mapped[str] = mapped_column(String(32), default="")
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

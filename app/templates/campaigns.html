@@ -67,7 +67,8 @@
                 <th>Тип</th>
                 <th class="text-end">Бюджет</th>
                 <th class="text-end">Расход</th>
-                <th class="text-end">ДРР</th>
+                <th class="text-end">ДРР факт</th>
+                <th class="text-end">Цель ДРР</th>
                 <th class="text-end">Корзина</th>
                 <th class="text-end">Заказы</th>
                 <th>Прогресс</th>
@@ -100,13 +101,34 @@
                     <span class="badge bg-dark">{{ c.status }}</span>
                     {% endif %}
                 </td>
-                <td>{{ c.campaign_type }}</td>
+                <td>
+                    {{ c.campaign_type }}
+                    {% if c.object_type == 'REF_BLOGGER' %}<span class="badge bg-light text-dark border">блогеры</span>
+                    {% elif c.object_type == 'REF_VK' %}<span class="badge bg-light text-dark border">VK</span>
+                    {% elif c.strategy == 'TARGET_CIR' %}<span class="badge bg-info text-dark" title="Автостратегия с целевым ДРР">авто</span>{% endif %}
+                </td>
                 <td class="text-end">
                     {% if c.daily_budget %}{{ "%.0f"|format(c.daily_budget) }} ₽/день{% elif c.weekly_budget %}{{ "%.0f"|format(c.weekly_budget) }} ₽/нед{% else %}—{% endif %}
                 </td>
                 <td class="text-end">{{ "%.2f"|format(c.spent) if c.spent else '—' }} ₽</td>
                 <td class="text-end">
-                    {% if c.drr %}<span class="{% if c.drr > 10 %}text-danger{% elif c.drr > 5 %}text-warning{% else %}text-success{% endif %}">{{ "%.1f"|format(c.drr) }}%</span>{% else %}—{% endif %}
+                    {% if c.drr %}
+                        {% if c.target_drr %}
+                        <span class="{% if c.drr > c.target_drr %}text-danger fw-bold{% elif c.drr > c.target_drr * 0.8 %}text-warning{% else %}text-success{% endif %}"
+                              title="{% if c.drr > c.target_drr %}Превышение цели на {{ '%.1f'|format(c.drr - c.target_drr) }} п.п.{% else %}В пределах цели{% endif %}">
+                            {{ "%.1f"|format(c.drr) }}%</span>
+                        {% else %}
+                        <span class="{% if c.drr > 10 %}text-danger{% elif c.drr > 5 %}text-warning{% else %}text-success{% endif %}">{{ "%.1f"|format(c.drr) }}%</span>
+                        {% endif %}
+                    {% else %}—{% endif %}
+                </td>
+                <td class="text-end">
+                    <input type="number" step="0.1" min="0" max="100"
+                           class="form-control form-control-sm text-end target-drr-input"
+                           style="width: 78px;" value="{{ c.target_drr if c.target_drr else '' }}"
+                           placeholder="—" data-pk="{{ c.id }}"
+                           onchange="saveTargetDrr({{ c.id }}, this.value)"
+                           title="Целевой ДРР, % — задайте цель; факт подсветится красным при превышении">
                 </td>
                 <td class="text-end">{{ c.to_cart if c.to_cart else '—' }}</td>
                 <td class="text-end">{{ orders_counts.get(c.id, 0) }}</td>
@@ -219,5 +241,26 @@ document.querySelectorAll('.btn-action').forEach(btn => {
         }
     });
 });
+
+async function saveTargetDrr(pk, value) {
+    const v = value === '' ? null : parseFloat(value);
+    try {
+        const resp = await fetch(`/api/campaigns/${pk}/target-drr`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_drr: isNaN(v) ? null : v }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            // Подсветим сохранение и перезагрузим для обновления подсветки факт vs цель
+            const input = document.querySelector(`.target-drr-input[data-pk="${pk}"]`);
+            if (input) { input.style.borderColor = '#198754'; setTimeout(() => location.reload(), 400); }
+        } else {
+            alert('Ошибка: ' + (data.detail || 'неизвестно'));
+        }
+    } catch (e) {
+        alert('Сеть: ' + e.message);
+    }
+}
 </script>
 {% endblock %}
