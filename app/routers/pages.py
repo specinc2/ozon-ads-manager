@@ -296,6 +296,23 @@ async def campaign_detail(request: Request, campaign_pk: int, db: AsyncSession =
         for p in ctx["products"]
     ]
 
+    # Конкурентные ставки (для авто-кампаний TARGET_CIR — единственный ориентир,
+    # ручные ставки там запрещены Ozon)
+    ctx["competitive_bids"] = {}
+    if ctx["products"] and campaign.strategy == "TARGET_CIR":
+        try:
+            client = await get_active_ozon_client(db, user.id)
+            bids = await client.get_competitive_bids(
+                campaign.campaign_id, [p.sku for p in ctx["products"][:200]]
+            )
+            # API отдаёт bid в микрорублях → в рубли
+            ctx["competitive_bids"] = {
+                str(b.get("sku")): float(b.get("bid") or 0) / 1_000_000
+                for b in (bids or []) if b.get("sku")
+            }
+        except Exception:
+            pass  # ориентир необязателен
+
     today = date.today()
     month_ago = today - timedelta(days=30)
     ctx["stats"] = await get_stats_for_period(db, user.id, campaign_pk, month_ago, today)

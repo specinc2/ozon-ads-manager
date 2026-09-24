@@ -67,8 +67,8 @@
                 <th>Тип</th>
                 <th class="text-end">Бюджет</th>
                 <th class="text-end">Расход</th>
-                <th class="text-end">ДРР факт</th>
-                <th class="text-end">Цель ДРР</th>
+                <th class="text-end" title="Фактический ДРР за 30 дней (сводный отчёт Ozon)">ДРР факт, 30 дн</th>
+                <th class="text-end" title="Ваша цель. Ozon API не позволяет задать цель автостратегии извне — цель в кабинете Ozon не изменится. Поле для контроля в панели: факт подсвечивается при превышении.">Цель ДРР (у нас)</th>
                 <th class="text-end">Корзина</th>
                 <th class="text-end">Заказы</th>
                 <th>Прогресс</th>
@@ -126,7 +126,7 @@
                     <input type="number" step="0.1" min="0" max="100"
                            class="form-control form-control-sm text-end target-drr-input"
                            style="width: 78px;" value="{{ c.target_drr if c.target_drr else '' }}"
-                           placeholder="—" data-pk="{{ c.id }}"
+                           placeholder="—" data-pk="{{ c.id }}" title="Целевой ДРР, % (локально в панели; в кабинете Ozon цель не меняется — API не позволяет)"
                            onchange="saveTargetDrr({{ c.id }}, this.value)"
                            title="Целевой ДРР, % — задайте цель; факт подсветится красным при превышении">
                 </td>

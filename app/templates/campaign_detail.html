@@ -94,11 +94,21 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="card-title mb-0">Товары в кампании ({{ products|length }})</h5>
+        {% if campaign.strategy != 'TARGET_CIR' %}
         <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkBidModal">
             <i class="bi bi-pencil-square"></i> Массовое изменение ставок
         </button>
+        {% endif %}
     </div>
     <div class="card-body">
+        {% if campaign.strategy == 'TARGET_CIR' %}
+        <div class="alert alert-info py-2 small">
+            <i class="bi bi-robot"></i> <strong>Автостратегия «Целевой ДРР»:</strong>
+            ставки управляются автобиддером Ozon — ручные ставки недоступны
+            (API отклоняет с ошибкой «не входит в диапазон»). Ориентир —
+            <strong>конкурентная ставка</strong> в таблице. Цель ДРР меняется только в кабинете Ozon.
+        </div>
+        {% endif %}
         {% if products %}
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle">
@@ -106,7 +116,11 @@
                     <tr>
                         <th>Товар</th>
                         <th>SKU</th>
-                        <th class="text-end">Ставка</th>
+                        {% if campaign.strategy == 'TARGET_CIR' %}
+                        <th class="text-end">Конкур. ставка</th>
+                        {% else %}
+                        <th class="text-end">Ставка, ₽ за клик</th>
+                        {% endif %}
                         <th class="text-end">Показы</th>
                         <th class="text-end">Клики</th>
                         <th class="text-end">Заказы</th>
@@ -119,9 +133,16 @@
                         <td>{{ p.name }}</td>
                         <td><code>{{ p.sku }}</code></td>
                         <td class="text-end">
+                            {% if campaign.strategy == 'TARGET_CIR' %}
+                                {% set comp = competitive_bids.get(p.sku|string, 0) %}
+                                {% if comp %}<strong>{{ "%.2f"|format(comp) }} ₽</strong>
+                                <span class="text-muted small">конкур.</span>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            {% else %}
                             <input type="number" step="0.01" min="0" class="form-control form-control-sm text-end bid-input"
                                    style="width: 100px; display: inline-block;" value="{{ p.bid }}" data-sku="{{ p.sku }}"
                                    data-campaign="{{ campaign.id }}">
+                            {% endif %}
                         </td>
                         <td class="text-end">{{ p.impressions }}</td>
                         <td class="text-end">{{ p.clicks }}</td>
@@ -132,9 +153,11 @@
                 </tbody>
             </table>
         </div>
+        {% if campaign.strategy != 'TARGET_CIR' %}
         <button class="btn btn-primary btn-sm" id="saveBidsBtn">
             <i class="bi bi-check-lg"></i> Сохранить ставки
         </button>
+        {% endif %}
         {% else %}
         <p class="text-muted mb-0">Товары не загружены. Нажмите «Товары» для синхронизации.</p>
         {% endif %}
